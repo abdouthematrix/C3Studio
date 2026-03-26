@@ -1,0 +1,435 @@
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:c="clr-namespace:C3Studio.Controls">
+
+    <!--
+        ═══════════════════════════════════════════════════════════════════
+        COLOUR PALETTE – Conquer Online dark theme
+        ══════════════════════════════════════════════════════════════════════
+    -->
+    <Color x:Key="Col.BgDeep">#0B0B14</Color>
+    <Color x:Key="Col.BgSurface">#13131F</Color>
+    <Color x:Key="Col.BgCard">#1C1C2E</Color>
+    <Color x:Key="Col.BgElevated">#242438</Color>
+    <Color x:Key="Col.Border">#2E2E48</Color>
+    <Color x:Key="Col.BorderHover">#3E3E5E</Color>
+
+    <Color x:Key="Col.Gold">#C8A96E</Color>
+    <Color x:Key="Col.GoldDim">#7A6040</Color>
+    <Color x:Key="Col.GoldGlow">#E8C880</Color>
+
+    <Color x:Key="Col.TextPrimary">#E8E8F0</Color>
+    <Color x:Key="Col.TextSecond">#8888A8</Color>
+    <Color x:Key="Col.TextDim">#4A4A68</Color>
+
+    <Color x:Key="Col.Ok">#4EC994</Color>
+    <Color x:Key="Col.Fail">#F05C5C</Color>
+    <Color x:Key="Col.Pending">#666680</Color>
+
+    <!--  Brushes  -->
+    <SolidColorBrush x:Key="Br.BgDeep" Color="{StaticResource Col.BgDeep}" />
+    <SolidColorBrush x:Key="Br.BgSurface" Color="{StaticResource Col.BgSurface}" />
+    <SolidColorBrush x:Key="Br.BgCard" Color="{StaticResource Col.BgCard}" />
+    <SolidColorBrush x:Key="Br.BgElevated" Color="{StaticResource Col.BgElevated}" />
+    <SolidColorBrush x:Key="Br.Border" Color="{StaticResource Col.Border}" />
+    <SolidColorBrush x:Key="Br.BorderHover" Color="{StaticResource Col.BorderHover}" />
+    <SolidColorBrush x:Key="Br.Gold" Color="{StaticResource Col.Gold}" />
+    <SolidColorBrush x:Key="Br.GoldDim" Color="{StaticResource Col.GoldDim}" />
+    <SolidColorBrush x:Key="Br.GoldGlow" Color="{StaticResource Col.GoldGlow}" />
+    <SolidColorBrush x:Key="Br.TextPrimary" Color="{StaticResource Col.TextPrimary}" />
+    <SolidColorBrush x:Key="Br.TextSecond" Color="{StaticResource Col.TextSecond}" />
+    <SolidColorBrush x:Key="Br.TextDim" Color="{StaticResource Col.TextDim}" />
+    <SolidColorBrush x:Key="Br.Ok" Color="{StaticResource Col.Ok}" />
+    <SolidColorBrush x:Key="Br.Fail" Color="{StaticResource Col.Fail}" />
+
+    <!--
+        ═══════════════════════════════════════════════════════════════════
+        CONVERTERS
+        ══════════════════════════════════════════════════════════════════════
+    -->
+    <BooleanToVisibilityConverter x:Key="BoolToVis" />
+
+    <!--
+        ═══════════════════════════════════════════════════════════════════
+        BASE STYLES
+        ══════════════════════════════════════════════════════════════════════
+    -->
+    <Style TargetType="TextBlock">
+        <Setter Property="Foreground" Value="{StaticResource Br.TextPrimary}" />
+        <Setter Property="FontFamily" Value="Segoe UI" />
+        <Setter Property="FontSize" Value="13" />
+    </Style>
+
+    <!--  ── PrimaryButton ───────────────────────────────────────────────  -->
+    <Style x:Key="PrimaryButton" TargetType="Button">
+        <Setter Property="Background" Value="{StaticResource Br.BgElevated}" />
+        <Setter Property="Foreground" Value="{StaticResource Br.Gold}" />
+        <Setter Property="BorderBrush" Value="{StaticResource Br.GoldDim}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="Padding" Value="20,10" />
+        <Setter Property="FontFamily" Value="Segoe UI Semibold" />
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border
+                        x:Name="Root"
+                        Padding="{TemplateBinding Padding}"
+                        Background="{TemplateBinding Background}"
+                        BorderBrush="{TemplateBinding BorderBrush}"
+                        BorderThickness="{TemplateBinding BorderThickness}"
+                        CornerRadius="6">
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Root" Property="Background" Value="{StaticResource Br.GoldDim}" />
+                            <Setter TargetName="Root" Property="BorderBrush" Value="{StaticResource Br.Gold}" />
+                        </Trigger>
+                        <Trigger Property="IsPressed" Value="True">
+                            <Setter TargetName="Root" Property="Background" Value="#3A2E18" />
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter TargetName="Root" Property="Opacity" Value="0.35" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!--  ── GhostButton ───────────────────────────────────────────────  -->
+    <Style
+        x:Key="GhostButton"
+        BasedOn="{StaticResource PrimaryButton}"
+        TargetType="Button">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderBrush" Value="{StaticResource Br.Border}" />
+        <Setter Property="Foreground" Value="{StaticResource Br.TextSecond}" />
+    </Style>
+
+    <!--  ── IconButton (compact, no border) ───────────────────────────  -->
+    <Style
+        x:Key="IconButton"
+        BasedOn="{StaticResource GhostButton}"
+        TargetType="Button">
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Padding" Value="8,6" />
+        <Setter Property="FontSize" Value="14" />
+    </Style>
+
+    <!--  ── PathBox ────────────────────────────────────────────────────  -->
+    <Style x:Key="PathBox" TargetType="TextBox">
+        <Setter Property="Background" Value="{StaticResource Br.BgDeep}" />
+        <Setter Property="Foreground" Value="{StaticResource Br.TextPrimary}" />
+        <Setter Property="BorderBrush" Value="{StaticResource Br.Border}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="Padding" Value="12,8" />
+        <Setter Property="FontFamily" Value="Consolas, Segoe UI" />
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="CaretBrush" Value="{StaticResource Br.Gold}" />
+        <Setter Property="SelectionBrush" Value="{StaticResource Br.GoldDim}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="TextBox">
+                    <Border
+                        Background="{TemplateBinding Background}"
+                        BorderBrush="{TemplateBinding BorderBrush}"
+                        BorderThickness="{TemplateBinding BorderThickness}"
+                        CornerRadius="6">
+                        <ScrollViewer
+                            x:Name="PART_ContentHost"
+                            Padding="{TemplateBinding Padding}"
+                            VerticalAlignment="Center" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsFocused" Value="True">
+                            <Setter Property="BorderBrush" Value="{StaticResource Br.GoldDim}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!--  ── SearchBox ──────────────────────────────────────────────────  -->
+    <Style
+        x:Key="SearchBox"
+        BasedOn="{StaticResource PathBox}"
+        TargetType="TextBox">
+        <Setter Property="Background" Value="{StaticResource Br.BgSurface}" />
+        <Setter Property="FontFamily" Value="Segoe UI" />
+    </Style>
+
+    <!--  ── Card ───────────────────────────────────────────────────────  -->
+    <Style x:Key="Card" TargetType="Border">
+        <Setter Property="Background" Value="{StaticResource Br.BgCard}" />
+        <Setter Property="BorderBrush" Value="{StaticResource Br.Border}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="10" />
+        <Setter Property="Padding" Value="20" />
+    </Style>
+
+    <!--  ── SectionLabel ───────────────────────────────────────────────  -->
+    <Style x:Key="SectionLabel" TargetType="TextBlock">
+        <Setter Property="Foreground" Value="{StaticResource Br.TextSecond}" />
+        <Setter Property="FontSize" Value="11" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Margin" Value="0,0,0,6" />
+    </Style>
+
+    <!--  ── TitleLabel ─────────────────────────────────────────────────  -->
+    <Style x:Key="TitleLabel" TargetType="TextBlock">
+        <Setter Property="Foreground" Value="{StaticResource Br.Gold}" />
+        <Setter Property="FontFamily" Value="Segoe UI Light" />
+        <Setter Property="FontSize" Value="26" />
+        <Setter Property="FontWeight" Value="Light" />
+    </Style>
+
+    <!--  ── SubTitle ───────────────────────────────────────────────────  -->
+    <Style x:Key="SubTitle" TargetType="TextBlock">
+        <Setter Property="Foreground" Value="{StaticResource Br.TextSecond}" />
+        <Setter Property="FontSize" Value="13" />
+    </Style>
+
+    <!--  ── NpcListItem ────────────────────────────────────────────────  -->
+    <Style x:Key="NpcListItem" TargetType="ListBoxItem">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Padding" Value="14,10" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ListBoxItem">
+                    <Border
+                        x:Name="Root"
+                        Margin="4,1"
+                        Padding="{TemplateBinding Padding}"
+                        Background="{TemplateBinding Background}"
+                        CornerRadius="6">
+                        <ContentPresenter />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Root" Property="Background" Value="{StaticResource Br.BgElevated}" />
+                        </Trigger>
+                        <Trigger Property="IsSelected" Value="True">
+                            <Setter TargetName="Root" Property="Background" Value="#1E1A2E" />
+                            <Setter TargetName="Root" Property="BorderBrush" Value="{StaticResource Br.GoldDim}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!--  ── NpcListBox ─────────────────────────────────────────────────  -->
+    <Style x:Key="NpcListBox" TargetType="ListBox">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Padding" Value="4" />
+        <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Disabled" />
+        <Setter Property="ItemContainerStyle" Value="{StaticResource NpcListItem}" />
+    </Style>
+
+    <!--  ── ChipBadge (category tag) ───────────────────────────────────  -->
+    <Style x:Key="ChipBadge" TargetType="Border">
+        <Setter Property="Background" Value="{StaticResource Br.BgElevated}" />
+        <Setter Property="BorderBrush" Value="{StaticResource Br.Border}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="4" />
+        <Setter Property="Padding" Value="8,3" />
+    </Style>
+
+    <!--  ── MotionChip ──────────────────────────────────────────────────  -->
+    <Style
+        x:Key="MotionChip"
+        BasedOn="{StaticResource ChipBadge}"
+        TargetType="Border">
+        <Setter Property="Background" Value="#1A1A30" />
+        <Setter Property="BorderBrush" Value="{StaticResource Br.GoldDim}" />
+        <Setter Property="Margin" Value="0,0,6,6" />
+    </Style>
+
+    <!--  Slim dark scrollbar  -->
+    <Style TargetType="ScrollBar">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="Width" Value="6" />
+    </Style>
+
+    <!--  ── ValidationRow status colours ───────────────────────────────  -->
+    <Style x:Key="StatusOk" TargetType="TextBlock">
+        <Setter Property="Foreground" Value="{StaticResource Br.Ok}" />
+        <Setter Property="FontSize" Value="13" />
+    </Style>
+    <Style x:Key="StatusFail" TargetType="TextBlock">
+        <Setter Property="Foreground" Value="{StaticResource Br.Fail}" />
+        <Setter Property="FontSize" Value="13" />
+    </Style>
+
+
+    <!--  ── DarkComboBox ────────────────────────────────────────────────  -->
+    <Style x:Key="DarkComboBox" TargetType="ComboBox">
+        <Setter Property="Background" Value="{StaticResource Br.BgElevated}" />
+        <Setter Property="Foreground" Value="{StaticResource Br.TextPrimary}" />
+        <Setter Property="BorderBrush" Value="{StaticResource Br.Border}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="Padding" Value="8,4" />
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ComboBox">
+                    <Grid>
+                        <ToggleButton
+                            x:Name="ToggleButton"
+                            Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            ClickMode="Press"
+                            Focusable="False"
+                            IsChecked="{Binding IsDropDownOpen, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}">
+                            <ToggleButton.Template>
+                                <ControlTemplate TargetType="ToggleButton">
+                                    <Border
+                                        x:Name="Root"
+                                        Padding="8,4"
+                                        Background="{TemplateBinding Background}"
+                                        BorderBrush="{TemplateBinding BorderBrush}"
+                                        BorderThickness="{TemplateBinding BorderThickness}"
+                                        CornerRadius="5">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="20" />
+                                            </Grid.ColumnDefinitions>
+                                            <ContentPresenter Grid.Column="0" VerticalAlignment="Center" />
+                                            <TextBlock
+                                                Grid.Column="1"
+                                                HorizontalAlignment="Center"
+                                                VerticalAlignment="Center"
+                                                FontSize="10"
+                                                Foreground="{StaticResource Br.Gold}"
+                                                Text="▾" />
+                                        </Grid>
+                                    </Border>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter TargetName="Root" Property="BorderBrush" Value="{StaticResource Br.GoldDim}" />
+                                        </Trigger>
+                                        <Trigger Property="IsChecked" Value="True">
+                                            <Setter TargetName="Root" Property="BorderBrush" Value="{StaticResource Br.Gold}" />
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </ToggleButton.Template>
+                        </ToggleButton>
+
+                        <ContentPresenter
+                            x:Name="ContentSite"
+                            Margin="10,4,30,4"
+                            VerticalAlignment="Center"
+                            Content="{TemplateBinding SelectionBoxItem}"
+                            ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"
+                            IsHitTestVisible="False" />
+
+                        <Popup
+                            x:Name="PART_Popup"
+                            AllowsTransparency="True"
+                            IsOpen="{Binding IsDropDownOpen, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}"
+                            Placement="Bottom"
+                            PlacementTarget="{Binding ElementName=ToggleButton}"
+                            PopupAnimation="Fade"
+                            StaysOpen="False">
+                            <Border
+                                MinWidth="{Binding ActualWidth, ElementName=ToggleButton}"
+                                MaxHeight="200"
+                                Background="{StaticResource Br.BgCard}"
+                                BorderBrush="{StaticResource Br.Border}"
+                                BorderThickness="1"
+                                CornerRadius="6">
+                                <ScrollViewer>
+                                    <ItemsPresenter />
+                                </ScrollViewer>
+                            </Border>
+                        </Popup>
+                    </Grid>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+        <Setter Property="ItemContainerStyle">
+            <Setter.Value>
+                <Style TargetType="ComboBoxItem">
+                    <Setter Property="Background" Value="Transparent" />
+                    <Setter Property="Foreground" Value="{StaticResource Br.TextPrimary}" />
+                    <Setter Property="Padding" Value="10,6" />
+                    <Setter Property="Cursor" Value="Hand" />
+                    <Style.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter Property="Background" Value="{StaticResource Br.BgElevated}" />
+                        </Trigger>
+                        <Trigger Property="IsSelected" Value="True">
+                            <Setter Property="Foreground" Value="{StaticResource Br.Gold}" />
+                        </Trigger>
+                    </Style.Triggers>
+                </Style>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!--  ── DarkSlider ──────────────────────────────────────────────────  -->
+    <Style x:Key="DarkSlider" TargetType="Slider">
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Slider">
+                    <Grid>
+                        <Track x:Name="PART_Track">
+                            <Track.DecreaseRepeatButton>
+                                <RepeatButton Command="Slider.DecreaseLarge">
+                                    <RepeatButton.Template>
+                                        <ControlTemplate TargetType="RepeatButton">
+                                            <Border
+                                                Height="3"
+                                                Background="{StaticResource Br.Gold}"
+                                                CornerRadius="2" />
+                                        </ControlTemplate>
+                                    </RepeatButton.Template>
+                                </RepeatButton>
+                            </Track.DecreaseRepeatButton>
+                            <Track.Thumb>
+                                <Thumb>
+                                    <Thumb.Template>
+                                        <ControlTemplate TargetType="Thumb">
+                                            <Ellipse
+                                                Width="12"
+                                                Height="12"
+                                                Fill="{StaticResource Br.Gold}"
+                                                Stroke="{StaticResource Br.GoldGlow}"
+                                                StrokeThickness="1" />
+                                        </ControlTemplate>
+                                    </Thumb.Template>
+                                </Thumb>
+                            </Track.Thumb>
+                            <Track.IncreaseRepeatButton>
+                                <RepeatButton Command="Slider.IncreaseLarge">
+                                    <RepeatButton.Template>
+                                        <ControlTemplate TargetType="RepeatButton">
+                                            <Border
+                                                Height="3"
+                                                Background="{StaticResource Br.Border}"
+                                                CornerRadius="2" />
+                                        </ControlTemplate>
+                                    </RepeatButton.Template>
+                                </RepeatButton>
+                            </Track.IncreaseRepeatButton>
+                        </Track>
+                    </Grid>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+</ResourceDictionary>
