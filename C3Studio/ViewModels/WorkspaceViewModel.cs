@@ -175,8 +175,8 @@ public class WorkspaceViewModel : ViewModelBase
     private void TryAddMotion(AssetNode parent, string label, ulong id)
     {
         if (id == 0) return;
-        if (_gameData.MotionMap.TryGetValue(id, out var path))
-            parent.Children.Add(new AssetNode { Icon = "🎬", Label = $"{label} ({id})", AssetKey = path });
+        var path = _gameData.ResolveMotion(id);  
+        parent.Children.Add(new AssetNode { Icon = "🎬", Label = $"{label} ({id})", AssetKey = path });
     }
 
     // ── Loading ───────────────────────────────────────────────────────────

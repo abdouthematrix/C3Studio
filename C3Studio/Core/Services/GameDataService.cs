@@ -11,8 +11,11 @@ public interface IGameDataService
     IReadOnlyDictionary<ulong, string> MeshMap    { get; }
     IReadOnlyDictionary<ulong, string> TextureMap { get; }
     IReadOnlyDictionary<ulong, string> MotionMap  { get; }
-
     Task LoadAsync(string conquerPath);
+    string? ResolveMesh(ulong id);
+    string? ResolveTexture(ulong id);
+    string? ResolveMotion(ulong motionId);
+    C3DSimpleObjInfo? FindSimpleObj(uint typeId);
 }
 
 public class GameDataService : IGameDataService
@@ -31,6 +34,7 @@ public class GameDataService : IGameDataService
 
     private string _loadedPath = string.Empty;
 
+    private static Dictionary<ulong, string> Cast(Dictionary<ulong, string> d) => d;
     public Task LoadAsync(string conquerPath) => Task.Run(() =>
     {
         // Skip re-parse if already loaded from the same path
@@ -47,6 +51,36 @@ public class GameDataService : IGameDataService
 
         _loadedPath = conquerPath;
     });
+    
+    public string? ResolveMesh(ulong id) => MeshMap.GetValueOrDefault(id);
+    public string? ResolveTexture(ulong id) => TextureMap.GetValueOrDefault(id);
 
-    private static Dictionary<ulong,string> Cast(Dictionary<ulong,string> d) => d;
+    /// <summary>
+    /// Two-pass motion resolver.
+    /// Pass 1: direct lookup (e.g. 999001100 → found directly).
+    /// Pass 2: strip-at-6 for 10-digit IDs: 9990010100 → remove index-6 '0' → 999001100.
+    /// </summary>
+    public string? ResolveMotion(ulong motionId)
+    {
+        // Pass 1 — direct lookup (e.g. 9990010100)
+        if (MotionMap.TryGetValue(motionId, out var direct)) return direct;
+
+        // Pass 2 — strip char at index 6 for 10-digit IDs
+        // 9990010100 → 999001|0|100 → remove index-6 → 999001100
+        var s = motionId.ToString();
+        if (s.Length == 10)
+        {
+            var stripped = s[..6] + s[7..];
+            if (ulong.TryParse(stripped, out var key2)
+                && MotionMap.TryGetValue(key2, out var path2))
+                return path2;
+        }
+        return null;
+    }
+
+    public C3DSimpleObjInfo? FindSimpleObj(uint typeId)
+    {
+        foreach (var o in SimpleObjs) if (o.IdType == typeId) return o;
+        return null;
+    }
 }
