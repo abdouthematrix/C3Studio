@@ -16,9 +16,6 @@ public partial class C3Model
     internal const string ExpectedVersion = "MAXFILE C3 00001";
     internal const int    MaxPhys         = 16;
     internal const int    MaxMotions       = 16;
-
-    public string SourcePath { get; set; } = string.Empty;
-
     public List<C3Phy>    Phys    { get; } = new();
     public List<C3Motion> Motions { get; } = new();
     public List<C3Omni>   Omnis   { get; } = new();
@@ -40,7 +37,6 @@ public partial class C3Model
             throw new FileNotFoundException($"C3 file not found: {filePath}");
         using var fs    = File.OpenRead(filePath);
         var model       = LoadFromStream(fs, loadTextures, gd);
-        model.SourcePath = filePath;
         return model;
     }
 
@@ -48,7 +44,7 @@ public partial class C3Model
                                      bool loadTextures = true,
                                      GraphicsDevice? gd = null)
     {
-        var model = new C3Model { SourcePath = "<stream>" };
+        var model = new C3Model();
         using var br = new BinaryReader(stream, Encoding.ASCII, leaveOpen: true);
 
         string version = Encoding.ASCII.GetString(br.ReadBytes(16)).TrimEnd('\0');
@@ -126,58 +122,58 @@ public partial class C3Model
         return model;
     }
 
-    // ------------------------------------------------------------------
-    public bool ReplacePhy(string targetName, string sourcePath,
-                           string? sourceMeshName  = null,
-                           string? texturePath     = null,
-                           bool    useSourceMotion = false)
-    {
-        if (!File.Exists(sourcePath)) return false;
-        C3Model src;
-        try { src = Load(sourcePath, loadTextures: false); } catch { return false; }
-        return ReplacePhyFromModel(targetName, src, sourceMeshName, texturePath, useSourceMotion);
-    }
+    //// ------------------------------------------------------------------
+    //public bool ReplacePhy(string targetName, string sourcePath,
+    //                       string? sourceMeshName  = null,
+    //                       string? texturePath     = null,
+    //                       bool    useSourceMotion = false)
+    //{
+    //    if (!File.Exists(sourcePath)) return false;
+    //    C3Model src;
+    //    try { src = Load(sourcePath, loadTextures: false); } catch { return false; }
+    //    return ReplacePhyFromModel(targetName, src, sourceMeshName, texturePath, useSourceMotion);
+    //}
 
-    public bool ReplacePhyFromModel(string targetName, C3Model sourceModel,
-                                    string? sourceMeshName  = null,
-                                    string? texturePath     = null,
-                                    bool    useSourceMotion = false)
-    {
-        int slot = Phys.FindIndex(p => string.Equals(p.Name, targetName, StringComparison.OrdinalIgnoreCase));
-        if (slot == -1) return false;
-        int srcIdx = sourceMeshName == null ? 0
-            : sourceModel.Phys.FindIndex(p => string.Equals(p.Name, sourceMeshName, StringComparison.OrdinalIgnoreCase));
-        if (srcIdx < 0 || srcIdx >= sourceModel.Phys.Count) return false;
+    //public bool ReplacePhyFromModel(string targetName, C3Model sourceModel,
+    //                                string? sourceMeshName  = null,
+    //                                string? texturePath     = null,
+    //                                bool    useSourceMotion = false)
+    //{
+    //    int slot = Phys.FindIndex(p => string.Equals(p.Name, targetName, StringComparison.OrdinalIgnoreCase));
+    //    if (slot == -1) return false;
+    //    int srcIdx = sourceMeshName == null ? 0
+    //        : sourceModel.Phys.FindIndex(p => string.Equals(p.Name, sourceMeshName, StringComparison.OrdinalIgnoreCase));
+    //    if (srcIdx < 0 || srcIdx >= sourceModel.Phys.Count) return false;
 
-        var newPhy = sourceModel.Phys[srcIdx];
-        newPhy.Name = targetName;
-        if (texturePath != null) newPhy.TexIndex = C3Texture.Texture_Load(texturePath);
+    //    var newPhy = sourceModel.Phys[srcIdx];
+    //    newPhy.Name = targetName;
+    //    if (texturePath != null) newPhy.TexIndex = C3Texture.Texture_Load(texturePath);
 
-        C3Motion? oldMotion = Phys[slot].Motion;
-        if (!useSourceMotion || srcIdx >= sourceModel.Motions.Count)
-        {
-            newPhy.Motion = oldMotion;
-        }
-        else
-        {
-            var newMotion = sourceModel.Motions[srcIdx];
-            newPhy.Motion = newMotion;
-            if (oldMotion != null)
-            {
-                Matrix combined = oldMotion.GetBoneMatrix(0)
-                                * (oldMotion.BoneMatrix.Count > 0 ? oldMotion.BoneMatrix[0] : Matrix.Identity);
-                for (int n = 0; n < newMotion.BoneMatrix.Count; n++)
-                    newMotion.BoneMatrix[n] = combined;
-            }
-        }
+    //    C3Motion? oldMotion = Phys[slot].Motion;
+    //    if (!useSourceMotion || srcIdx >= sourceModel.Motions.Count)
+    //    {
+    //        newPhy.Motion = oldMotion;
+    //    }
+    //    else
+    //    {
+    //        var newMotion = sourceModel.Motions[srcIdx];
+    //        newPhy.Motion = newMotion;
+    //        if (oldMotion != null)
+    //        {
+    //            Matrix combined = oldMotion.GetBoneMatrix(0)
+    //                            * (oldMotion.BoneMatrix.Count > 0 ? oldMotion.BoneMatrix[0] : Matrix.Identity);
+    //            for (int n = 0; n < newMotion.BoneMatrix.Count; n++)
+    //                newMotion.BoneMatrix[n] = combined;
+    //        }
+    //    }
 
-        Phys[slot] = newPhy;
-        newPhy.Calculate();
-        PhyReplaced?.Invoke(slot);
-        return true;
-    }
+    //    Phys[slot] = newPhy;
+    //    newPhy.Calculate();
+    //    PhyReplaced?.Invoke(slot);
+    //    return true;
+    //}
 
-    // ------------------------------------------------------------------
+    //// ------------------------------------------------------------------
     public C3Phy? FindPhy(string name) =>
         Phys.Find(p => string.Equals(p.Name, name, StringComparison.OrdinalIgnoreCase));
 
@@ -186,9 +182,16 @@ public partial class C3Model
 
     public void ChangeMotion(string motionFilePath, Matrix rotationMatrix)
     {
+        using var fs = File.OpenRead(motionFilePath);
+        ChangeMotion(fs, rotationMatrix);
+    }
+
+    // New — used by the renderer when a stream is already open
+    public void ChangeMotion(Stream stream, Matrix rotationMatrix)
+    {
         Motions.Clear();
         foreach (var phy in Phys) phy.Motion = null;
-        var src = Load(motionFilePath);
+        var src = LoadFromStream(stream, loadTextures: false);
         foreach (var m in src.Motions) Motions.Add(m);
         BindPhyMotions(this, rotationMatrix);
     }

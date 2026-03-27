@@ -1,11 +1,11 @@
-using System.Collections.ObjectModel;
-using System.IO;
-using System.Windows.Input;
 using C3Studio.Core.Models;
 using C3Studio.Core.Services;
 using C3Studio.Models;
 using C3Studio.MonoGame;
 using Microsoft.Win32;
+using System.Collections.ObjectModel;
+using System.IO;
+using System.Windows.Input;
 
 namespace C3Studio.ViewModels;
 
@@ -77,8 +77,29 @@ public class WorkspaceViewModel : ViewModelBase
         set
         {
             Set(ref _selectedNode, value);
+
+            // Repopulate motion list
+            AvailableMotions.Clear();
+            if (value?.AssetData?.Motions is { Length: > 0 } motions)
+                foreach (var m in motions)
+                    AvailableMotions.Add(m);
+
             if (value?.IsLoadable == true)
-                LoadAssetNode(value);
+                LoadAssetNode(value);   // auto-selects first motion inside
+        }
+    }
+
+    // Add these two properties
+    public ObservableCollection<MotionData> AvailableMotions { get; } = new();
+
+    private MotionData? _selectedMotion;
+    public MotionData? SelectedMotion
+    {
+        get => _selectedMotion;
+        set
+        {
+            if (Set(ref _selectedMotion, value) && value != null)
+                TryApplyMotion(value.Path);
         }
     }
 
@@ -149,67 +170,139 @@ public class WorkspaceViewModel : ViewModelBase
     private void BuildAssetTree()
     {
         AssetTree.Clear();
-
-        // NPCs
-        var npcRoot = new AssetNode { Icon = "👤", Label = $"NPCs ({_gameData.Npcs.Count})" };
-        foreach (var npc in _gameData.Npcs)
-        {
-            var node = new AssetNode { Icon = "⚔", Label = $"[{npc.NpcType}] {npc.Name}" };
-
-            // Try to resolve mesh path via SimpleObj → mesh map
-            if (_gameData.SimpleObjs.FirstOrDefault(s => s.IdType == npc.SimpleObjId) is { } obj
-                && obj.Parts > 0
-                && _gameData.MeshMap.TryGetValue(obj.MeshIds[0], out var meshPath))
-            {
-                node.AssetKey = meshPath;
-            }
-
-            // Motion nodes
-            TryAddMotion(node, "▶ StandBy",  npc.StandByMotionId);
-            TryAddMotion(node, "▶ Blaze",    npc.BlazeMotionId);
-            TryAddMotion(node, "▶ Rest",     npc.RestMotionId);
-
-            npcRoot.Children.Add(node);
-        }
-        AssetTree.Add(npcRoot);
-
-        // Simple Objects
-        var objRoot = new AssetNode { Icon = "🗿", Label = $"Simple Objects ({_gameData.SimpleObjs.Count})" };
-        foreach (var obj in _gameData.SimpleObjs)
-        {
-            var node = new AssetNode { Icon = "📦", Label = $"[{obj.IdType}]" };
-            for (int i = 0; i < obj.Parts; i++)
-            {
-                if (_gameData.MeshMap.TryGetValue(obj.MeshIds[i], out var mp))
-                {
-                    var part = new AssetNode { Icon = "🔷", Label = $"Part {i} — {Path.GetFileName(mp)}", AssetKey = mp };
-                    node.Children.Add(part);
-                }
-            }
-            if (node.Children.Count > 0) node.AssetKey = node.Children[0].AssetKey;
-            objRoot.Children.Add(node);
-        }
-        AssetTree.Add(objRoot);
+        AssetTree.Add(BuildNpcRoot());
+        AssetTree.Add(BuildSimpleObjRoot());
     }
 
-    private void TryAddMotion(AssetNode parent, string label, ulong id)
+    private AssetNode BuildNpcRoot()
+    {
+        var root = new AssetNode { Icon = "👤", Label = $"NPCs ({_gameData.Npcs.Count})" };
+
+        foreach (var npc in _gameData.Npcs)
+            root.Children.Add(BuildNpcNode(npc));
+
+        return root;
+    }
+
+    private AssetNode BuildNpcNode(NpcTypeInfo npc)
+    {
+        var node = new AssetNode { Icon = "⚔", Label = $"[{npc.NpcType}] {npc.Name}" };
+
+        var obj = _gameData.FindSimpleObj(npc.SimpleObjId);
+        var motions = BuildMotionEntries(npc);
+
+        if (obj != null || motions.Length > 0)
+        {
+            var (meshPaths, texturePaths) = obj != null
+                ? BuildMeshArrays(obj)
+                : ([], []);
+
+            node.AssetData = new AssetData
+            {
+                MeshPaths = meshPaths,
+                TexturePaths = texturePaths,
+                Motions = motions
+            };
+        }
+
+        return node;
+    }
+
+    private AssetNode BuildSimpleObjRoot()
+    {
+        var root = new AssetNode { Icon = "🗿", Label = $"Simple Objects ({_gameData.SimpleObjs.Count})" };
+
+        foreach (var obj in _gameData.SimpleObjs)
+            root.Children.Add(BuildSimpleObjNode(obj));
+
+        return root;
+    }
+
+    private AssetNode BuildSimpleObjNode(C3DSimpleObjInfo obj)
+    {
+        var (meshPaths, texturePaths) = BuildMeshArrays(obj);
+
+        var node = new AssetNode
+        {
+            Icon = "📦",
+            Label = $"[{obj.IdType}]",
+            AssetData = new AssetData
+            {
+                MeshPaths = meshPaths,
+                TexturePaths = texturePaths
+            }
+        };
+
+        for (int i = 0; i < obj.Parts; i++)
+        {
+            if (string.IsNullOrEmpty(meshPaths[i]) || meshPaths[i].StartsWith('?'))
+                continue;
+
+            node.Children.Add(new AssetNode
+            {
+                Icon = "🔷",
+                Label = $"Part {i} — {System.IO.Path.GetFileName(meshPaths[i])}",
+                AssetData = new AssetData
+                {
+                    MeshPaths = [meshPaths[i]],
+                    TexturePaths = [texturePaths[i]]
+                }
+            });
+        }
+
+        return node;
+    }
+
+    // ── Helpers ──────────────────────────────────────────────────────────────────
+
+    private (string[] Paths, string[] Textures) BuildMeshArrays(C3DSimpleObjInfo obj)
+    {
+        var meshes = new string[obj.Parts];
+        var textures = new string[obj.Parts];
+
+        for (int i = 0; i < obj.Parts; i++)
+        {
+            meshes[i] = _gameData.ResolveMesh(obj.MeshIds[i]) ?? $"? ({obj.MeshIds[i]})";
+            textures[i] = _gameData.ResolveTexture(obj.TextureIds[i]) ?? $"? ({obj.TextureIds[i]})";
+        }
+
+        return (meshes, textures);
+    }
+
+    private MotionData[] BuildMotionEntries(NpcTypeInfo npc)
+    {
+        var entries = new List<MotionData>();
+        TryAddMotion(entries, "StandBy", npc.StandByMotionId);
+        TryAddMotion(entries, "Blaze", npc.BlazeMotionId);
+        TryAddMotion(entries, "Rest", npc.RestMotionId);
+        return entries.ToArray();
+    }
+
+    private void TryAddMotion(List<MotionData> entries, string label, ulong id)
     {
         if (id == 0) return;
-        var path = _gameData.ResolveMotion(id);  
-        parent.Children.Add(new AssetNode { Icon = "🎬", Label = $"{label} ({id})", AssetKey = path });
-    }
-
-    // ── Loading ───────────────────────────────────────────────────────────
+        var path = _gameData.ResolveMotion(id);
+        if (path != null)
+            entries.Add(new MotionData(label, path));
+    }    
     private void BrowseFile()
     {
         var dlg = new OpenFileDialog { Filter = "C3 files (*.c3)|*.c3|All files (*.*)|*.*" };
         if (dlg.ShowDialog() == true) ModelPath = dlg.FileName;
     }
-
     private void LoadModel()
     {
         if (_game == null || string.IsNullOrEmpty(ModelPath)) return;
-        TryLoad(ModelPath);
+        try
+        {
+            _game.LoadC3Asset(ModelPath,
+                texturePath: string.IsNullOrEmpty(TexturePath) ? null : TexturePath);
+            StatusMessage = $"Loaded: {Path.GetFileName(ModelPath)}";
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Error: {ex.Message}";
+        }
     }
     private void BrowseTexture()
     {
@@ -219,7 +312,6 @@ public class WorkspaceViewModel : ViewModelBase
         };
         if (dlg.ShowDialog() == true) TexturePath = dlg.FileName;
     }
-
     private void BrowseMotion()
     {
         var dlg = new OpenFileDialog
@@ -228,35 +320,59 @@ public class WorkspaceViewModel : ViewModelBase
         };
         if (dlg.ShowDialog() == true) MotionPath = dlg.FileName;
     }
-
     private void ApplyMotion()
     {
         if (_game == null || string.IsNullOrEmpty(MotionPath)) return;
-        try
-        {
-            _game.ChangeMotion(MotionPath);
-            StatusMessage = $"Motion: {Path.GetFileName(MotionPath)}";
-        }
-        catch (Exception ex)
-        {
-            StatusMessage = $"Motion error: {ex.Message}";
-        }
+        TryApplyMotion(MotionPath);
     }
-
     private void LoadAssetNode(AssetNode node)
     {
-        if (node.AssetKey == null || _game == null) return;
-        ModelPath = node.AssetKey;
-        TryLoad(ModelPath);
+        if (node.AssetData is not { } data || _game == null) return;
+
+        TryLoadParts(data);
+
+        if (data.Motions.Length > 0)
+        {
+            _selectedMotion = data.Motions[0];          // set backing field
+            OnPropertyChanged(nameof(SelectedMotion));   // no re-trigger
+            TryApplyMotion(data.Motions[0].Path);
+        }
+        else
+        {
+            _selectedMotion = null;
+            OnPropertyChanged(nameof(SelectedMotion));
+        }
     }
 
-    private void TryLoad(string path)
+    private void TryLoadParts(AssetData data)
     {
+        if (data.MeshPaths.Length == 0) return;
+
+        // Update display fields
+        ModelPath = data.MeshPaths.Length == 1
+            ? data.MeshPaths[0]
+            : $"{data.MeshPaths.Length} parts";
+        TexturePath = data.TexturePaths.Length == 1
+            ? data.TexturePaths[0]
+            : string.Empty;
+
         try
         {
-            _game!.LoadC3Asset(path,
-                texturePath: string.IsNullOrEmpty(TexturePath) ? null : TexturePath);
-            StatusMessage = $"Loaded: {Path.GetFileName(path)}";
+            for (int i = 0; i < data.MeshPaths.Length; i++)
+            {
+                var mesh = data.MeshPaths[i];
+                var texture = i < data.TexturePaths.Length ? data.TexturePaths[i] : null;
+
+                // Manual texture override applies only to single-part loads
+                if (data.MeshPaths.Length == 1 && !string.IsNullOrEmpty(TexturePath))
+                    texture = TexturePath;
+
+                _game!.LoadC3Asset(mesh, texturePath: texture);
+            }
+
+            StatusMessage = data.MeshPaths.Length == 1
+                ? $"Loaded: {Path.GetFileName(data.MeshPaths[0])}"
+                : $"Loaded {data.MeshPaths.Length} parts";
         }
         catch (Exception ex)
         {
@@ -264,6 +380,21 @@ public class WorkspaceViewModel : ViewModelBase
         }
     }
 
+    private void TryApplyMotion(string path)
+    {
+        if (_game == null || string.IsNullOrEmpty(path)) return;
+        try
+        {
+            _game.ChangeMotion(path);
+            MotionPath = path;
+            StatusMessage += $" · Motion: {Path.GetFileName(path)}";
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Motion error: {ex.Message}";
+        }
+    }
+   
     // ── Playback ──────────────────────────────────────────────────────────
     private void TogglePlay()
     {

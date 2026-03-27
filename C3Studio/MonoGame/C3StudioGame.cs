@@ -1,4 +1,3 @@
-using System.IO;
 using C3Studio.Core.Services;
 using C3Studio.Infrastructure.C3Format;
 using C3Studio.Infrastructure.Rendering;
@@ -8,6 +7,7 @@ using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
 using MonoGame.Framework.WpfInterop;
 using MonoGame.Framework.WpfInterop.Input;
+using System.IO;
 
 namespace C3Studio.MonoGame;
 
@@ -184,12 +184,6 @@ public class C3StudioGame : WpfGame
 
     // ── Public API ────────────────────────────────────────────────────────
 
-    /// <summary>Load from an absolute filesystem path.</summary>
-    public void LoadC3(string path, string? texturePath = null)
-    {
-        _renderer?.LoadModel(path, texturePath: texturePath, worldRotation: WorldCorrection);
-    }
-
     /// <summary>
     /// Load from a relative path via <see cref="IAssetFileService"/> (WDF-aware).
     /// Falls back gracefully to treating the path as absolute if AssetService is not set.
@@ -203,14 +197,11 @@ public class C3StudioGame : WpfGame
             if (AssetService != null)
             {
                 using var stream = AssetService.Open(relativePath);
-                LoadC3(stream, relativePath, texturePath);   // ← pass it on
-            }
-            else
-            {
-                _renderer.LoadModel(relativePath,
-                    texturePath: texturePath,
-                    worldRotation: WorldCorrection);
-            }
+                var model = C3Model.LoadFromStream(stream, loadTextures: true, gd: GraphicsDevice);
+                _renderer.LoadModelDirect(model, worldRotation: WorldCorrection);
+                _renderer.OverrideTexture(OverrideTexture(texturePath));
+                AutoFitCamera(model);
+            }           
         }
         catch (Exception ex)
         {
@@ -218,28 +209,58 @@ public class C3StudioGame : WpfGame
                 $"[C3StudioGame] LoadC3Asset '{relativePath}': {ex.Message}");
         }
     }
-
-    /// <summary>
-    /// Load from a stream (e.g. sourced from WDF via AssetService).
-    /// sourceName is used for texture lookup.
-    /// Auto-fits the camera to the loaded model's bounding radius.
-    /// </summary>
-    public void LoadC3(Stream stream, string sourceName, string? texturePath = null)
+    public Texture2D OverrideTexture(string relativePath)
+    {
+        if (_renderer == null) return null;
+        try
+        {
+            if (string.IsNullOrEmpty(relativePath)) return null;
+            int existing = C3Texture.FindByName(relativePath);           
+            if (AssetService != null)
+            {
+                using var stream = AssetService.Open(relativePath);
+                var ext = Path.GetExtension(relativePath).ToLowerInvariant();
+                using var br = new System.IO.BinaryReader(stream, System.Text.Encoding.ASCII, leaveOpen: false);
+                Texture2D tex = ext switch
+                {
+                    ".dds" => DDSLoader.Load(GraphicsDevice, br),
+                    ".tga" => TGALoader.Load(GraphicsDevice, br),
+                    _ => Texture2D.FromStream(GraphicsDevice, stream),
+                };
+                existing = C3Texture.InsertTexture(relativePath, tex);
+            }
+            if (existing != -1)
+                return C3Texture.Get(existing)?.Texture;
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine(
+                $"[C3StudioGame] OverrideTexture '{relativePath}': {ex.Message}");           
+        }
+        return null;
+    }
+    public void ChangeMotion(string relativePath)
     {
         if (_renderer == null) return;
-
-        var model = C3Model.LoadFromStream(stream, loadTextures: true, gd: GraphicsDevice);
-        model.SourcePath = sourceName;
-        _renderer.LoadModelDirect(model, worldRotation: WorldCorrection);
-
-        // Override per-phy texture with an explicit file if supplied
-        if (!string.IsNullOrEmpty(texturePath))
-            _renderer.OverrideTexture(texturePath);          // ← see C3Renderer addition below
-
-        AutoFitCamera(model);
+        try
+        {
+            if (AssetService != null)
+            {
+                using var stream = AssetService.Open(relativePath);
+                _renderer.ChangeMotion(stream, WorldCorrection);
+            }
+            else
+            {
+                // Fallback: treat as absolute path (dev/debug only)
+                _renderer.ChangeMotion(relativePath, WorldCorrection);
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine(
+                $"[C3StudioGame] ChangeMotion '{relativePath}': {ex.Message}");
+        }
     }
-    public void ChangeMotion(string path)
-    => _renderer?.ChangeMotion(path, WorldCorrection);
 
     // ── Camera auto-fit ───────────────────────────────────────────────────
     private void AutoFitCamera(C3Model model)

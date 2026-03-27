@@ -6,6 +6,14 @@ using C3Studio.Core.Models;
 
 namespace C3Studio.Converters;
 
+public class GreaterThanZeroToVisibilityConverter : IValueConverter
+{
+    public object Convert(object v, Type t, object p, CultureInfo c)
+        => (v is int n && n > 0) ? Visibility.Visible : Visibility.Collapsed;
+    public object ConvertBack(object v, Type t, object p, CultureInfo c)
+        => throw new NotImplementedException();
+}
+
 // ── ValidationStatus → Brush ──────────────────────────────────────────────
 public class ValidationStatusToBrushConverter : IValueConverter
 {

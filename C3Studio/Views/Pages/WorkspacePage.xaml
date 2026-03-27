@@ -169,7 +169,7 @@
                                 VerticalAlignment="Center"
                                 Style="{StaticResource SectionLabel}"
                                 Text="ASSETS" />
-                            <Button
+                            <!--<Button
                                 Width="24"
                                 Height="24"
                                 Padding="0"
@@ -178,7 +178,7 @@
                                 Content="↺"
                                 FontSize="14"
                                 Style="{StaticResource GhostButton}"
-                                ToolTip="Refresh asset tree" />
+                                ToolTip="Refresh asset tree" />-->
                         </Grid>
                     </Border>
 
@@ -296,6 +296,32 @@
                 BorderThickness="1,0,0,0">
                 <ScrollViewer Padding="14" VerticalScrollBarVisibility="Auto">
                     <StackPanel>
+                        <!--  Motions section  -->
+                        <TextBlock
+                            Margin="4,12,4,4"
+                            Style="{StaticResource SectionLabel}"
+                            Text="MOTIONS" />
+
+                        <ListBox
+                            MaxHeight="180"
+                            ItemsSource="{Binding AvailableMotions}"
+                            SelectedItem="{Binding SelectedMotion, Mode=TwoWay}"
+                            Style="{StaticResource NpcListBox}"
+                            Visibility="{Binding AvailableMotions.Count, Converter={StaticResource GreaterThanZeroToVisibility}}">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <StackPanel VerticalAlignment="Center" Orientation="Horizontal">
+                                        <Border Style="{StaticResource MotionChip}">
+                                            <TextBlock
+                                                FontSize="11"
+                                                FontWeight="SemiBold"
+                                                Foreground="{StaticResource Br.Gold}"
+                                                Text="{Binding Label}" />
+                                        </Border>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
 
                         <!--  Section: Playback  -->
                         <TextBlock

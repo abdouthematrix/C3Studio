@@ -126,6 +126,11 @@ public class C3Renderer : IDisposable
         foreach (var rd in _phyData)
             rd.Texture = tex;
     }
+    public void OverrideTexture(Texture2D texture2D)
+    {
+        foreach (var rd in _phyData)
+            rd.Texture = texture2D;
+    }
 
     private void Unload()
     {
@@ -143,6 +148,15 @@ public class C3Renderer : IDisposable
         _model.ChangeMotion(motionFilePath, worldRotation ?? Matrix.Identity);
         _model.Calculate();
         foreach (var rd in _phyData) if(rd.Phy.Draw&&rd.VertexBuffer!=null) rd.UploadVertices();
+    }
+    // New — accepts a pre-opened stream
+    public void ChangeMotion(Stream stream, Matrix? worldRotation = null)
+    {
+        if (_model == null) return;
+        _frameTimer = 0;
+        _model.ChangeMotion(stream, worldRotation ?? Matrix.Identity);
+        _model.Calculate();
+        foreach (var rd in _phyData) if (rd.Phy.Draw && rd.VertexBuffer != null) rd.UploadVertices();
     }
 
     // ------------------------------------------------------------------
@@ -312,11 +326,7 @@ public class C3Renderer : IDisposable
         if (slot<0||slot>=_phyData.Count) return;
         var rd=_phyData[slot]; var phy=_model!.Phys[slot];
         rd.Phy=phy; rd.Rebuild(_gd);
-        rd.Texture=phy.TexIndex!=-1
-            ? C3Texture.Get(phy.TexIndex)?.Texture
-            : ResolvePhyTexture(phy, null,
-                Path.GetDirectoryName(_model.SourcePath) ?? string.Empty,
-                Path.GetFileNameWithoutExtension(phy.TexName));
+        rd.Texture= C3Texture.Get(phy.TexIndex)?.Texture;
     }
 
     public void Dispose()

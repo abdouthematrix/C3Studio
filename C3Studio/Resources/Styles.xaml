@@ -1,7 +1,8 @@
 <ResourceDictionary
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    xmlns:c="clr-namespace:C3Studio.Controls">
+    xmlns:c="clr-namespace:C3Studio.Controls"
+    xmlns:cv="clr-namespace:C3Studio.Converters">
 
     <!--
         ═══════════════════════════════════════════════════════════════════
@@ -49,6 +50,7 @@
         ══════════════════════════════════════════════════════════════════════
     -->
     <BooleanToVisibilityConverter x:Key="BoolToVis" />
+    <cv:GreaterThanZeroToVisibilityConverter x:Key="GreaterThanZeroToVisibility" />
 
     <!--
         ═══════════════════════════════════════════════════════════════════
