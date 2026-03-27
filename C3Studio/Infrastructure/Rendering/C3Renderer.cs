@@ -116,6 +116,16 @@ public class C3Renderer : IDisposable
             _phyData.Add(rd);
         }
     }
+    /// <summary>
+    /// Replaces every phy's texture with a single explicit file.
+    /// Call after LoadModelDirect when the user has picked a texture override.
+    /// </summary>
+    public void OverrideTexture(string texturePath)
+    {
+        var tex = LoadTexture(texturePath);       // already exists, private → keep or make internal
+        foreach (var rd in _phyData)
+            rd.Texture = tex;
+    }
 
     private void Unload()
     {

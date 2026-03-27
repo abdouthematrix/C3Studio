@@ -185,16 +185,16 @@ public class C3StudioGame : WpfGame
     // ── Public API ────────────────────────────────────────────────────────
 
     /// <summary>Load from an absolute filesystem path.</summary>
-    public void LoadC3(string path)
+    public void LoadC3(string path, string? texturePath = null)
     {
-        _renderer?.LoadModel(path, worldRotation: WorldCorrection);
+        _renderer?.LoadModel(path, texturePath: texturePath, worldRotation: WorldCorrection);
     }
 
     /// <summary>
     /// Load from a relative path via <see cref="IAssetFileService"/> (WDF-aware).
     /// Falls back gracefully to treating the path as absolute if AssetService is not set.
     /// </summary>
-    public void LoadC3Asset(string relativePath)
+    public void LoadC3Asset(string relativePath, string? texturePath = null)
     {
         if (_renderer == null) return;
 
@@ -203,16 +203,19 @@ public class C3StudioGame : WpfGame
             if (AssetService != null)
             {
                 using var stream = AssetService.Open(relativePath);
-                LoadC3(stream, relativePath);
+                LoadC3(stream, relativePath, texturePath);   // ← pass it on
             }
             else
             {
-                _renderer.LoadModel(relativePath);
+                _renderer.LoadModel(relativePath,
+                    texturePath: texturePath,
+                    worldRotation: WorldCorrection);
             }
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[C3StudioGame] LoadC3Asset '{relativePath}': {ex.Message}");
+            System.Diagnostics.Debug.WriteLine(
+                $"[C3StudioGame] LoadC3Asset '{relativePath}': {ex.Message}");
         }
     }
 
@@ -221,7 +224,7 @@ public class C3StudioGame : WpfGame
     /// sourceName is used for texture lookup.
     /// Auto-fits the camera to the loaded model's bounding radius.
     /// </summary>
-    public void LoadC3(Stream stream, string sourceName)
+    public void LoadC3(Stream stream, string sourceName, string? texturePath = null)
     {
         if (_renderer == null) return;
 
@@ -229,8 +232,14 @@ public class C3StudioGame : WpfGame
         model.SourcePath = sourceName;
         _renderer.LoadModelDirect(model, worldRotation: WorldCorrection);
 
+        // Override per-phy texture with an explicit file if supplied
+        if (!string.IsNullOrEmpty(texturePath))
+            _renderer.OverrideTexture(texturePath);          // ← see C3Renderer addition below
+
         AutoFitCamera(model);
     }
+    public void ChangeMotion(string path)
+    => _renderer?.ChangeMotion(path, WorldCorrection);
 
     // ── Camera auto-fit ───────────────────────────────────────────────────
     private void AutoFitCamera(C3Model model)

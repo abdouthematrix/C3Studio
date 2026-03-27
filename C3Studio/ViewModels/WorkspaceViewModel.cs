@@ -18,6 +18,8 @@ public class WorkspaceViewModel : ViewModelBase
     private C3StudioGame? _game;
 
     private string _modelPath     = string.Empty;
+    private string _texturePath = string.Empty;
+    private string _motionPath = string.Empty;
     private string _statusMessage = "Ready.";
     private bool   _isLoading;
     private string _frameLabel    = "0 / 0";
@@ -31,6 +33,17 @@ public class WorkspaceViewModel : ViewModelBase
     {
         get => _modelPath;
         set => Set(ref _modelPath, value);
+    }
+    public string TexturePath
+    {
+        get => _texturePath;
+        set => Set(ref _texturePath, value);
+    }
+
+    public string MotionPath
+    {
+        get => _motionPath;
+        set => Set(ref _motionPath, value);
     }
     public string StatusMessage
     {
@@ -76,6 +89,9 @@ public class WorkspaceViewModel : ViewModelBase
     public ICommand StepFwdCommand     { get; }
     public ICommand StepBackCommand    { get; }
     public ICommand SetFpsCommand      { get; }
+    public ICommand BrowseTextureCommand { get; }
+    public ICommand BrowseMotionCommand { get; }
+    public ICommand ApplyMotionCommand { get; }
 
     public WorkspaceViewModel(IGameDataService gameData,
                               IAssetFileService assets,
@@ -92,6 +108,10 @@ public class WorkspaceViewModel : ViewModelBase
         StepFwdCommand     = Cmd(() => _game?.StepFrame(1));
         StepBackCommand    = Cmd(() => _game?.StepFrame(-1));
         SetFpsCommand      = Cmd<string>(s => { if (float.TryParse(s, out float v)) Fps = v; });
+
+        BrowseTextureCommand = Cmd(BrowseTexture);
+        BrowseMotionCommand = Cmd(BrowseMotion);
+        ApplyMotionCommand = Cmd(ApplyMotion, () => !string.IsNullOrEmpty(MotionPath));
     }
 
     /// <summary>
@@ -191,6 +211,37 @@ public class WorkspaceViewModel : ViewModelBase
         if (_game == null || string.IsNullOrEmpty(ModelPath)) return;
         TryLoad(ModelPath);
     }
+    private void BrowseTexture()
+    {
+        var dlg = new OpenFileDialog
+        {
+            Filter = "Texture files (*.dds;*.tga;*.png;*.jpg)|*.dds;*.tga;*.png;*.jpg|All files (*.*)|*.*"
+        };
+        if (dlg.ShowDialog() == true) TexturePath = dlg.FileName;
+    }
+
+    private void BrowseMotion()
+    {
+        var dlg = new OpenFileDialog
+        {
+            Filter = "C3 motion files (*.c3)|*.c3|All files (*.*)|*.*"
+        };
+        if (dlg.ShowDialog() == true) MotionPath = dlg.FileName;
+    }
+
+    private void ApplyMotion()
+    {
+        if (_game == null || string.IsNullOrEmpty(MotionPath)) return;
+        try
+        {
+            _game.ChangeMotion(MotionPath);
+            StatusMessage = $"Motion: {Path.GetFileName(MotionPath)}";
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Motion error: {ex.Message}";
+        }
+    }
 
     private void LoadAssetNode(AssetNode node)
     {
@@ -203,7 +254,8 @@ public class WorkspaceViewModel : ViewModelBase
     {
         try
         {
-            _game!.LoadC3Asset(path);
+            _game!.LoadC3Asset(path,
+                texturePath: string.IsNullOrEmpty(TexturePath) ? null : TexturePath);
             StatusMessage = $"Loaded: {Path.GetFileName(path)}";
         }
         catch (Exception ex)
