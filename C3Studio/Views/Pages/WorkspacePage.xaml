@@ -375,6 +375,39 @@
                             Style="{StaticResource SectionLabel}"
                             Text="PLAYBACK" />
 
+                        <StackPanel HorizontalAlignment="Center" Orientation="Horizontal">
+                            <!--  Step back  -->
+                            <Button
+                                Width="32"
+                                Padding="0"
+                                Command="{Binding StepBackCommand}"
+                                Content="◀"
+                                FontSize="14"
+                                Style="{StaticResource GhostButton}"
+                                ToolTip="Previous frame" />
+
+                            <!--  Play / Pause  -->
+                            <Button
+                                Width="36"
+                                Margin="4,0"
+                                Padding="0"
+                                Command="{Binding PlayPauseCommand}"
+                                Content="{Binding PlayPauseLabel}"
+                                FontSize="16"
+                                Style="{StaticResource PrimaryButton}"
+                                ToolTip="Play / Pause  (Space)" />
+
+                            <!--  Step fwd  -->
+                            <Button
+                                Width="32"
+                                Padding="0"
+                                Command="{Binding StepFwdCommand}"
+                                Content="▶"
+                                FontSize="14"
+                                Style="{StaticResource GhostButton}"
+                                ToolTip="Next frame" />
+                        </StackPanel>
+
                         <!--  Frame info card  -->
                         <Border
                             Margin="0,0,0,12"
