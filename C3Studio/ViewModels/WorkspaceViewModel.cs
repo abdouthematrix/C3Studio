@@ -515,8 +515,14 @@ public class WorkspaceViewModel : ViewModelBase
         if (_game == null || string.IsNullOrEmpty(ModelPath)) return;
         try
         {
-            _game.LoadC3Asset(ModelPath,
-                texturePath: string.IsNullOrEmpty(TexturePath) ? null : TexturePath);
+            IEnumerable<(string MeshPath, string? TexturePath)> parts = new List<(string, string?)>
+            {
+                (ModelPath, TexturePath),                
+            };
+
+            _game!.LoadC3Parts(parts, motionPath: MotionPath);
+            //_game.LoadC3Asset(ModelPath,
+             //       texturePath: string.IsNullOrEmpty(TexturePath) ? null : TexturePath);
             StatusMessage = $"Loaded: {Path.GetFileName(ModelPath)}";
         }
         catch (Exception ex) { StatusMessage = $"Error: {ex.Message}"; }
