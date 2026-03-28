@@ -125,6 +125,18 @@ public class WorkspaceViewModel : ViewModelBase
     public ICommand BrowseMotionCommand { get; }
     public ICommand ApplyMotionCommand { get; }
 
+    // ── Search / filter ───────────────────────────────────────────────────
+
+    private string _searchText = string.Empty;
+    public string SearchText
+    {
+        get => _searchText;
+        set { if (Set(ref _searchText, value)) RefreshFilter(); }
+    }
+
+    public ObservableCollection<AssetNode> FilteredAssetTree { get; } = new();
+    public ICommand ClearSearchCommand { get; }
+
     public WorkspaceViewModel(IGameDataService gameData,
                                IAssetFileService assets,
                                ISettingsService settings)
@@ -143,6 +155,7 @@ public class WorkspaceViewModel : ViewModelBase
         BrowseTextureCommand = Cmd(BrowseTexture);
         BrowseMotionCommand = Cmd(BrowseMotion);
         ApplyMotionCommand = Cmd(ApplyMotion, () => !string.IsNullOrEmpty(MotionPath));
+        ClearSearchCommand = Cmd(() => SearchText = string.Empty);
     }
 
     // ── Initialisation ────────────────────────────────────────────────────
@@ -179,6 +192,7 @@ public class WorkspaceViewModel : ViewModelBase
         AssetTree.Clear();
         AssetTree.Add(BuildNpcRoot());
         AssetTree.Add(BuildSimpleObjRoot());
+        RefreshFilter();                   // ← add this line
     }
 
     private AssetNode BuildNpcRoot()
@@ -250,6 +264,64 @@ public class WorkspaceViewModel : ViewModelBase
         }
 
         return node;
+    }
+
+    // ── Search / filter ───────────────────────────────────────────────────
+
+    private void RefreshFilter()
+    {
+        FilteredAssetTree.Clear();
+        string q = _searchText?.Trim() ?? string.Empty;
+
+        foreach (var root in AssetTree)
+        {
+            var node = FilterNode(root, q);
+            if (node != null)
+                FilteredAssetTree.Add(node);
+        }
+    }
+
+    /// <summary>
+    /// Returns a (possibly shallow-cloned) node if it or any descendant
+    /// matches <paramref name="query"/>.  Returns null when nothing matches.
+    /// When <paramref name="query"/> is empty every node passes.
+    /// </summary>
+    private static AssetNode? FilterNode(AssetNode node, string query)
+    {
+        // Empty query → pass everything through as-is (no allocation)
+        if (string.IsNullOrEmpty(query))
+            return node;
+
+        bool selfMatch = node.Label.Contains(query, StringComparison.OrdinalIgnoreCase);
+
+        // Leaf node
+        if (node.Children.Count == 0)
+            return selfMatch ? node : null;
+
+        // Recurse into children
+        var matchedChildren = node.Children
+            .Select(c => FilterNode(c, query))
+            .OfType<AssetNode>()
+            .ToList();
+
+        if (!selfMatch && matchedChildren.Count == 0)
+            return null;
+
+        // Build a proxy root that holds only the matching subtree
+        var proxy = new AssetNode
+        {
+            Icon = node.Icon,
+            Label = node.Label,
+            AssetData = node.AssetData
+        };
+
+        // If the root label itself matched, show ALL its children unfiltered.
+        // If only children matched, show only those.
+        var childSource = selfMatch ? node.Children : matchedChildren;
+        foreach (var child in childSource)
+            proxy.Children.Add(child);
+
+        return proxy;
     }
 
     // ── Asset loading ─────────────────────────────────────────────────────

@@ -71,3 +71,11 @@ public class ZeroToCollapsedConverter : IValueConverter
         => value is int n && n == 0 ? Visibility.Collapsed : Visibility.Visible;
     public object ConvertBack(object v, Type t, object p, CultureInfo ci) => Binding.DoNothing;
 }
+
+/// <summary>null or empty string → Collapsed, otherwise Visible.</summary>
+public sealed class NullOrEmptyToVisibilityConverter : IValueConverter
+{
+    public object Convert(object v, Type _, object __, CultureInfo ___)
+        => string.IsNullOrEmpty(v?.ToString()) ? Visibility.Collapsed : Visibility.Visible;
+    public object ConvertBack(object v, Type t, object p, CultureInfo c) => throw new NotSupportedException();
+}

@@ -15,6 +15,7 @@
             <cv:BoolToVisibilityConverter x:Key="BoolToVis" />
             <cv:InverseBoolToVisibilityConverter x:Key="InvBoolToVis" />
             <cv:ZeroToCollapsedConverter x:Key="ZeroToCollapsed" />
+            <cv:NullOrEmptyToVisibilityConverter x:Key="NullOrEmptyToVis" />
         </ResourceDictionary>
     </Application.Resources>
 </Application>
