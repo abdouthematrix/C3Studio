@@ -11,21 +11,21 @@ namespace C3Studio.Infrastructure.Rendering;
 public class PhyRenderData : IDisposable
 {
     public DynamicVertexBuffer? VertexBuffer { get; private set; }
-    public IndexBuffer?         IndexBuffer  { get; private set; }
-    public Texture2D?           Texture      { get; set; }
-    public C3Phy                Phy          { get; set; }
+    public IndexBuffer? IndexBuffer { get; private set; }
+    public Texture2D? Texture { get; set; }
+    public C3Phy Phy { get; set; }
 
-    public PhyRenderData(GraphicsDevice gd, C3Phy phy) { Phy=phy; Rebuild(gd); }
+    public PhyRenderData(GraphicsDevice gd, C3Phy phy) { Phy = phy; Rebuild(gd); }
 
     public void Rebuild(GraphicsDevice gd)
     {
         VertexBuffer?.Dispose(); IndexBuffer?.Dispose();
-        VertexBuffer=null; IndexBuffer=null;
-        if (Phy.TotalVertexCount==0||Phy.TotalIndexCount==0) return;
-        VertexBuffer=new DynamicVertexBuffer(gd,
+        VertexBuffer = null; IndexBuffer = null;
+        if (Phy.TotalVertexCount == 0 || Phy.TotalIndexCount == 0) return;
+        VertexBuffer = new DynamicVertexBuffer(gd,
             VertexPositionColorTexture.VertexDeclaration,
             Phy.TotalVertexCount, BufferUsage.WriteOnly);
-        IndexBuffer=new IndexBuffer(gd,IndexElementSize.SixteenBits,
+        IndexBuffer = new IndexBuffer(gd, IndexElementSize.SixteenBits,
             Phy.TotalIndexCount, BufferUsage.WriteOnly);
         IndexBuffer.SetData(Phy.IndexBuffer.ToArray());
         UploadVertices();
@@ -33,9 +33,9 @@ public class PhyRenderData : IDisposable
 
     public void UploadVertices()
     {
-        if (VertexBuffer==null) return;
-        var v=Phy.BuildGpuVertices();
-        if (v.Length>0) VertexBuffer.SetData(v,0,v.Length,SetDataOptions.Discard);
+        if (VertexBuffer == null) return;
+        var v = Phy.BuildGpuVertices();
+        if (v.Length > 0) VertexBuffer.SetData(v, 0, v.Length, SetDataOptions.Discard);
     }
 
     public void Dispose() { VertexBuffer?.Dispose(); IndexBuffer?.Dispose(); }
@@ -50,45 +50,71 @@ public class PhyRenderData : IDisposable
 /// </summary>
 public class C3Renderer : IDisposable
 {
-    private readonly GraphicsDevice      _gd;
-    private readonly BasicEffect         _effect;
-    private C3Model?                     _model;
+    private readonly GraphicsDevice _gd;
+    private readonly BasicEffect _effect;
+    private C3Model? _model;
     private readonly List<PhyRenderData> _phyData = new();
 
     private double _frameTimer;
     private double _secondsPerFrame = 1.0 / 30.0;
 
-    public bool    IsPlaying { get; set; } = true;
-    public float   Fps
+    // ── Mesh visibility filter ────────────────────────────────────────────
+    // Null = render everything. Otherwise only phys whose Name is in the set are drawn.
+    private HashSet<string> _visibleMeshes = new();// new(["v_body"], StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Replaces the visible-mesh filter. Pass no arguments to render all meshes.
+    /// </summary>
+    public void SetVisibleMeshes(params string[] meshNames)
+    {
+        _visibleMeshes.Clear();
+        foreach (var n in meshNames) _visibleMeshes.Add(n);
+    }
+
+    /// <summary>Adds names to the current visible set.</summary>
+    public void AddVisibleMeshes(params string[] meshNames)
+    {
+        foreach (var n in meshNames) _visibleMeshes.Add(n);
+    }
+
+    /// <summary>Clears the filter — all meshes are rendered.</summary>
+    public void ClearVisibleMeshes() => _visibleMeshes.Clear();
+
+    private bool IsMeshVisible(C3Phy phy) =>
+        _visibleMeshes.Count == 0 || _visibleMeshes.Contains(phy.Name);
+
+    // ─────────────────────────────────────────────────────────────────────
+    public bool IsPlaying { get; set; } = true;
+    public float Fps
     {
         get => (float)(1.0 / _secondsPerFrame);
         set => _secondsPerFrame = value > 0 ? 1.0 / value : 1.0 / 30.0;
     }
-    public Matrix  World { get; set; } = Matrix.Identity;
+    public Matrix World { get; set; } = Matrix.Identity;
     public C3Model? Model => _model;
 
     public C3Renderer(GraphicsDevice gd)
     {
-        _gd    = gd;
+        _gd = gd;
         _effect = new BasicEffect(gd)
-        { LightingEnabled=false, VertexColorEnabled=true, TextureEnabled=true };
+        { LightingEnabled = false, VertexColorEnabled = true, TextureEnabled = true };
     }
 
     // ------------------------------------------------------------------
-    public void LoadModel(string c3FilePath, string? texturePath=null, Matrix? worldRotation=null)
+    public void LoadModel(string c3FilePath, string? texturePath = null, Matrix? worldRotation = null)
     {
         Unload();
-        _model = C3Model.Load(c3FilePath, gd:_gd);
+        _model = C3Model.Load(c3FilePath, gd: _gd);
         _model.PhyReplaced += OnPhyReplaced;
 
         if (worldRotation.HasValue)
             foreach (var phy in _model.Phys)
-                if (phy.Motion!=null)
+                if (phy.Motion != null)
                 { phy.Motion.ClearMatrix(); phy.Motion.Multiply(-1, worldRotation.Value); }
 
         _model.Calculate();
 
-        string dir  = Path.GetDirectoryName(c3FilePath) ?? string.Empty;
+        string dir = Path.GetDirectoryName(c3FilePath) ?? string.Empty;
         string name = Path.GetFileNameWithoutExtension(c3FilePath);
 
         foreach (var phy in _model.Phys)
@@ -141,13 +167,13 @@ public class C3Renderer : IDisposable
     }
 
     // ------------------------------------------------------------------
-    public void ChangeMotion(string motionFilePath, Matrix? worldRotation=null)
+    public void ChangeMotion(string motionFilePath, Matrix? worldRotation = null)
     {
-        if (_model==null) return;
-        _frameTimer=0;
+        if (_model == null) return;
+        _frameTimer = 0;
         _model.ChangeMotion(motionFilePath, worldRotation ?? Matrix.Identity);
         _model.Calculate();
-        foreach (var rd in _phyData) if(rd.Phy.Draw&&rd.VertexBuffer!=null) rd.UploadVertices();
+        foreach (var rd in _phyData) if (rd.Phy.Draw && rd.VertexBuffer != null) rd.UploadVertices();
     }
     // New — accepts a pre-opened stream
     public void ChangeMotion(Stream stream, Matrix? worldRotation = null)
@@ -162,7 +188,7 @@ public class C3Renderer : IDisposable
     // ------------------------------------------------------------------
     public void Update(GameTime gameTime)
     {
-        if (_model==null) return;
+        if (_model == null) return;
         if (IsPlaying)
         {
             _frameTimer += gameTime.ElapsedGameTime.TotalSeconds;
@@ -175,13 +201,13 @@ public class C3Renderer : IDisposable
             }
         }
         foreach (var rd in _phyData)
-            if (rd.Phy.Draw && rd.VertexBuffer!=null) rd.UploadVertices();
+            if (rd.Phy.Draw && rd.VertexBuffer != null && IsMeshVisible(rd.Phy)) rd.UploadVertices();
     }
 
     // ------------------------------------------------------------------
     public void Draw(Matrix view, Matrix projection)
     {
-        if (_model==null) return;
+        if (_model == null) return;
         _gd.SamplerStates[0] = SamplerState.LinearWrap;
         DrawScene(view, projection);
         DrawPhy(view, projection);
@@ -191,112 +217,114 @@ public class C3Renderer : IDisposable
 
     private void DrawScene(Matrix view, Matrix projection)
     {
-        if (_model!.Scenes.Count==0) return;
-        _effect.VertexColorEnabled=false; _effect.LightingEnabled=false;
+        if (_model!.Scenes.Count == 0) return;
+        _effect.VertexColorEnabled = false; _effect.LightingEnabled = false;
         foreach (var scene in _model.Scenes) scene.Draw(_gd, _effect, view, projection);
     }
 
     private void DrawPhy(Matrix view, Matrix projection)
     {
-        if (_phyData.Count==0) return;
-        _gd.DepthStencilState=DepthStencilState.Default;
-        _effect.View=view; _effect.Projection=projection; _effect.World=World;
-        _effect.VertexColorEnabled=true; _effect.LightingEnabled=false;
+        if (_phyData.Count == 0) return;
+        _gd.DepthStencilState = DepthStencilState.Default;
+        _effect.View = view; _effect.Projection = projection; _effect.World = World;
+        _effect.VertexColorEnabled = true; _effect.LightingEnabled = false;
 
         // Opaque pass
-        _gd.BlendState=BlendState.Opaque;
+        _gd.BlendState = BlendState.Opaque;
         foreach (var rd in _phyData)
         {
-            var phy=rd.Phy;
-            if (!phy.Draw||phy.NormalTriCount==0||!phy.IsFullyOpaque||rd.VertexBuffer==null) continue;
-            _gd.RasterizerState=phy.TwoSided?RasterizerState.CullNone:RasterizerState.CullCounterClockwise;
+            var phy = rd.Phy;
+            if (!phy.Draw || phy.NormalTriCount == 0 || !phy.IsFullyOpaque || rd.VertexBuffer == null) continue;
+            if (!IsMeshVisible(phy)) continue;
+            _gd.RasterizerState = phy.TwoSided ? RasterizerState.CullNone : RasterizerState.CullCounterClockwise;
             SetPhyEffect(rd);
-            _gd.SetVertexBuffer(rd.VertexBuffer); _gd.Indices=rd.IndexBuffer;
+            _gd.SetVertexBuffer(rd.VertexBuffer); _gd.Indices = rd.IndexBuffer;
             foreach (var pass in _effect.CurrentTechnique.Passes)
-            { pass.Apply(); _gd.DrawIndexedPrimitives(PrimitiveType.TriangleList,0,0,phy.NormalTriCount); }
+            { pass.Apply(); _gd.DrawIndexedPrimitives(PrimitiveType.TriangleList, 0, 0, phy.NormalTriCount); }
         }
 
         // Alpha pass
-        _gd.RasterizerState=RasterizerState.CullNone;
+        _gd.RasterizerState = RasterizerState.CullNone;
         foreach (var rd in _phyData)
         {
-            var phy=rd.Phy;
-            if (!phy.Draw||rd.VertexBuffer==null) continue;
-            bool tn=phy.NormalTriCount>0&&!phy.IsFullyOpaque;
-            bool at=phy.AlphaTriCount>0;
-            if (!tn&&!at) continue;
-            _gd.BlendState=ResolveBlendState(phy.BlendAsb, phy.BlendAdb);
+            var phy = rd.Phy;
+            if (!phy.Draw || rd.VertexBuffer == null) continue;
+            if (!IsMeshVisible(phy)) continue;
+            bool tn = phy.NormalTriCount > 0 && !phy.IsFullyOpaque;
+            bool at = phy.AlphaTriCount > 0;
+            if (!tn && !at) continue;
+            _gd.BlendState = ResolveBlendState(phy.BlendAsb, phy.BlendAdb);
             SetPhyEffect(rd);
-            _gd.SetVertexBuffer(rd.VertexBuffer); _gd.Indices=rd.IndexBuffer;
+            _gd.SetVertexBuffer(rd.VertexBuffer); _gd.Indices = rd.IndexBuffer;
             foreach (var pass in _effect.CurrentTechnique.Passes)
             {
                 pass.Apply();
-                if (tn) _gd.DrawIndexedPrimitives(PrimitiveType.TriangleList,0,0,phy.NormalTriCount);
-                if (at) _gd.DrawIndexedPrimitives(PrimitiveType.TriangleList,0,phy.AlphaIndexStart,phy.AlphaTriCount);
+                if (tn) _gd.DrawIndexedPrimitives(PrimitiveType.TriangleList, 0, 0, phy.NormalTriCount);
+                if (at) _gd.DrawIndexedPrimitives(PrimitiveType.TriangleList, 0, phy.AlphaIndexStart, phy.AlphaTriCount);
             }
         }
     }
 
     private void DrawPtcl(Matrix view, Matrix projection)
     {
-        if (_model!.Ptcls.Count==0) return;
+        if (_model!.Ptcls.Count == 0) return;
         foreach (var p in _model.Ptcls) p.Draw(_gd, _effect, view, projection, BlendState.AlphaBlend);
     }
 
     private void DrawShape(Matrix view, Matrix projection)
     {
-        if (_model!.Shapes.Count==0) return;
+        if (_model!.Shapes.Count == 0) return;
         foreach (var s in _model.Shapes) s.Draw(_gd, _effect, view, projection);
     }
 
     // ------------------------------------------------------------------
     public void StepFrame(int delta)
     {
-        if (_model==null) return;
+        if (_model == null) return;
         _model.AdvanceFrame(delta);
         _model.Calculate();
         _model.UpdateShapes();
         foreach (var rd in _phyData)
-            if (rd.Phy.Draw&&rd.VertexBuffer!=null) rd.UploadVertices();
+            if (rd.Phy.Draw && rd.VertexBuffer != null) rd.UploadVertices();
     }
 
     public void ResetFrame()
     {
-        if (_model==null) return;
+        if (_model == null) return;
         _model.SetFrame(0);
         _model.Calculate();
         foreach (var rd in _phyData)
-            if (rd.Phy.Draw&&rd.VertexBuffer!=null) rd.UploadVertices();
+            if (rd.Phy.Draw && rd.VertexBuffer != null) rd.UploadVertices();
     }
 
     // ------------------------------------------------------------------
     private void SetPhyEffect(PhyRenderData rd)
     {
-        var phy=rd.Phy; bool ht=rd.Texture!=null;
-        _effect.TextureEnabled=ht; _effect.VertexColorEnabled=true;
-        _effect.Texture=ht?rd.Texture:null;
-        _effect.DiffuseColor=new Vector3(phy.R, phy.G, phy.B);
-        _effect.Alpha=phy.Alpha;
+        var phy = rd.Phy; bool ht = rd.Texture != null;
+        _effect.TextureEnabled = ht; _effect.VertexColorEnabled = true;
+        _effect.Texture = ht ? rd.Texture : null;
+        _effect.DiffuseColor = new Vector3(phy.R, phy.G, phy.B);
+        _effect.Alpha = phy.Alpha;
     }
 
     // 5=SrcAlpha, 6=InvSrcAlpha (AlphaBlend) · 2=One/One (Additive)
     private static BlendState ResolveBlendState(int asb, int adb) =>
-        (asb==2 && adb==2) ? BlendState.Additive : BlendState.AlphaBlend;
+        (asb == 2 && adb == 2) ? BlendState.Additive : BlendState.AlphaBlend;
 
     private Texture2D? ResolvePhyTexture(C3Phy phy, string? explicitPath, string dir, string baseName)
     {
-        if (explicitPath!=null && File.Exists(explicitPath)) return LoadTexture(explicitPath);
-        if (phy.TexIndex!=-1) { var c=C3Texture.Get(phy.TexIndex)?.Texture; if(c!=null) return c; }
+        if (explicitPath != null && File.Exists(explicitPath)) return LoadTexture(explicitPath);
+        if (phy.TexIndex != -1) { var c = C3Texture.Get(phy.TexIndex)?.Texture; if (c != null) return c; }
         string? found = FindTexture(dir, baseName)
                      ?? FindTexture(dir, Path.GetFileNameWithoutExtension(phy.TexName));
-        return found!=null ? LoadTexture(found) : null;
+        return found != null ? LoadTexture(found) : null;
     }
 
     private static string? FindTexture(string dir, string? baseName)
     {
-        if (string.IsNullOrEmpty(dir)||string.IsNullOrEmpty(baseName)) return null;
-        foreach (var ext in new[]{".dds",".tga",".png",".jpg"})
-        { string p=Path.Combine(dir,baseName+ext); if(File.Exists(p)) return p; }
+        if (string.IsNullOrEmpty(dir) || string.IsNullOrEmpty(baseName)) return null;
+        foreach (var ext in new[] { ".dds", ".tga", ".png", ".jpg" })
+        { string p = Path.Combine(dir, baseName + ext); if (File.Exists(p)) return p; }
         return null;
     }
 
@@ -308,25 +336,25 @@ public class C3Renderer : IDisposable
             {
                 ".dds" => DDSLoader.Load(_gd, path),
                 ".tga" => TGALoader.Load(_gd, path),
-                _      => LoadStream(path)
+                _ => LoadStream(path)
             };
         }
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine($"[C3Renderer] '{path}': {ex.Message}");
-            var t=new Texture2D(_gd,1,1); t.SetData(new[]{Color.Magenta}); return t;
+            var t = new Texture2D(_gd, 1, 1); t.SetData(new[] { Color.Magenta }); return t;
         }
     }
 
     private Texture2D LoadStream(string p)
-    { using var s=File.OpenRead(p); return Texture2D.FromStream(_gd,s); }
+    { using var s = File.OpenRead(p); return Texture2D.FromStream(_gd, s); }
 
     private void OnPhyReplaced(int slot)
     {
-        if (slot<0||slot>=_phyData.Count) return;
-        var rd=_phyData[slot]; var phy=_model!.Phys[slot];
-        rd.Phy=phy; rd.Rebuild(_gd);
-        rd.Texture= C3Texture.Get(phy.TexIndex)?.Texture;
+        if (slot < 0 || slot >= _phyData.Count) return;
+        var rd = _phyData[slot]; var phy = _model!.Phys[slot];
+        rd.Phy = phy; rd.Rebuild(_gd);
+        rd.Texture = C3Texture.Get(phy.TexIndex)?.Texture;
     }
 
     public void Dispose()

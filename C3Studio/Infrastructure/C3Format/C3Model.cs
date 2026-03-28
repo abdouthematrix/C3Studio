@@ -14,14 +14,14 @@ namespace C3Studio.Infrastructure.C3Format;
 public partial class C3Model
 {
     internal const string ExpectedVersion = "MAXFILE C3 00001";
-    internal const int    MaxPhys         = 16;
-    internal const int    MaxMotions       = 16;
-    public List<C3Phy>    Phys    { get; } = new();
+    internal const int MaxPhys = 16;
+    internal const int MaxMotions = 16;
+    public List<C3Phy> Phys { get; } = new();
     public List<C3Motion> Motions { get; } = new();
-    public List<C3Omni>   Omnis   { get; } = new();
-    public List<C3Ptcl>   Ptcls   { get; } = new();
-    public List<C3Scene>  Scenes  { get; } = new();
-    public List<C3Shape>  Shapes  { get; } = new();
+    public List<C3Omni> Omnis { get; } = new();
+    public List<C3Ptcl> Ptcls { get; } = new();
+    public List<C3Scene> Scenes { get; } = new();
+    public List<C3Shape> Shapes { get; } = new();
 
     internal readonly List<C3SMotion> _pendingMotions = new();
 
@@ -33,8 +33,8 @@ public partial class C3Model
     {
         if (!File.Exists(filePath))
             throw new FileNotFoundException($"C3 file not found: {filePath}");
-        using var fs    = File.OpenRead(filePath);
-        var model       = LoadFromStream(fs, gd);
+        using var fs = File.OpenRead(filePath);
+        var model = LoadFromStream(fs, gd);
         return model;
     }
 
@@ -82,7 +82,7 @@ public partial class C3Model
 
                 case "SCEN":
                     model.Scenes.Add(C3Scene.Load(br));
-                    break;                   
+                    break;
 
                 case "SHAP":
                     model.Shapes.Add(C3Shape.Load(br));
@@ -178,32 +178,41 @@ public partial class C3Model
     {
         Motions.Clear();
         foreach (var phy in Phys) phy.Motion = null;
+
         var src = LoadFromStream(stream);
-        foreach (var m in src.Motions) Motions.Add(m);
+        if (src.Motions.Count == 0) return;
+
+        // For merged multi-part models, Phys.Count is a multiple of the
+        // per-part motion count (e.g. 14 phys / 7 motions = 2 parts).
+        // Tile the incoming motions so every phy slot gets a binding.
+        int perPart = src.Motions.Count;
+        for (int i = 0; i < Phys.Count; i++)
+            Motions.Add(src.Motions[i % perPart]);
+
         BindPhyMotions(this, rotationMatrix);
     }
 
-    public void AdvanceFrame(int step=1)
+    public void AdvanceFrame(int step = 1)
     {
-        foreach (var p in Phys)   p.Motion?.NextFrame(step);
-        foreach (var p in Ptcls)  p.NextFrame(step);
+        foreach (var p in Phys) p.Motion?.NextFrame(step);
+        foreach (var p in Ptcls) p.NextFrame(step);
         foreach (var s in Scenes) s.NextFrame(step);
         foreach (var s in Shapes) s.NextFrame(step);
     }
 
     public void SetFrame(int frame)
     {
-        foreach (var p in Phys)   p.Motion?.SetFrame(frame);
-        foreach (var p in Ptcls)  p.SetFrame(frame);
+        foreach (var p in Phys) p.Motion?.SetFrame(frame);
+        foreach (var p in Ptcls) p.SetFrame(frame);
         foreach (var s in Shapes) s.SetFrame(frame);
     }
 
-    public void Calculate()                { foreach (var p in Phys)   p.Calculate(); }
-    public void UpdateShapes(bool b=false) { foreach (var s in Shapes) s.Update(b); }
+    public void Calculate() { foreach (var p in Phys) p.Calculate(); }
+    public void UpdateShapes(bool b = false) { foreach (var s in Shapes) s.Update(b); }
 
     public int MaxFrameCount
-    { get { int m=0; foreach(var mo in Motions) if(mo.FrameCount>m) m=mo.FrameCount; return m; } }
-       
+    { get { int m = 0; foreach (var mo in Motions) if (mo.FrameCount > m) m = mo.FrameCount; return m; } }
+
     internal static void BindPhyMotions(C3Model model, Matrix? rotation = null)
     {
         for (int i = 0; i < model.Phys.Count; i++)
@@ -212,9 +221,9 @@ public partial class C3Model
                 model.Phys[i].Motion = model.Motions[i];
             else
             {
-                var stub = new C3Motion { BoneCount=1, FrameCount=1 };
+                var stub = new C3Motion { BoneCount = 1, FrameCount = 1 };
                 stub.BoneMatrix.Add(Matrix.Identity);
-                stub.KeyFrames.Add(new C3KeyFrame { Pos=0, BoneMatrices={Matrix.Identity} });
+                stub.KeyFrames.Add(new C3KeyFrame { Pos = 0, BoneMatrices = { Matrix.Identity } });
                 model.Phys[i].Motion = stub;
             }
             if (rotation.HasValue)
