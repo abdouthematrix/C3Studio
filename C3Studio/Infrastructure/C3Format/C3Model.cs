@@ -91,7 +91,10 @@ public partial class C3Model
                 case "SMOT":
                     model._pendingMotions.Add(C3SMotion.Load(br));
                     break;
-
+                    
+                case "CAME":
+                    stream.Seek(chunk.ChunkSize, SeekOrigin.Current);
+                    break;
                 default:
                     stream.Seek(chunk.ChunkSize, SeekOrigin.Current);
                     break;

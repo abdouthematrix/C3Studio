@@ -52,6 +52,7 @@ public class C3Renderer : IDisposable
 {
     private readonly GraphicsDevice _gd;
     private readonly BasicEffect _effect;
+    private readonly AlphaTestEffect _alphaTestEffect;
     private C3Model? _model;
     private readonly List<PhyRenderData> _phyData = new();
 
@@ -98,6 +99,11 @@ public class C3Renderer : IDisposable
         _gd = gd;
         _effect = new BasicEffect(gd)
         { LightingEnabled = false, VertexColorEnabled = true, TextureEnabled = true };
+        _alphaTestEffect = new AlphaTestEffect(gd)
+        {
+            AlphaFunction = CompareFunction.GreaterEqual,
+            ReferenceAlpha = 8,           
+        };
     }
 
     // ------------------------------------------------------------------
@@ -243,8 +249,11 @@ public class C3Renderer : IDisposable
             { pass.Apply(); _gd.DrawIndexedPrimitives(PrimitiveType.TriangleList, 0, 0, phy.NormalTriCount); }
         }
 
-        // Alpha pass
-        _gd.RasterizerState = RasterizerState.CullNone;
+        _alphaTestEffect.View = view;
+        _alphaTestEffect.Projection = projection;
+        _alphaTestEffect.World = World;
+        _alphaTestEffect.VertexColorEnabled = true;
+        
         foreach (var rd in _phyData)
         {
             var phy = rd.Phy;
@@ -254,9 +263,9 @@ public class C3Renderer : IDisposable
             bool at = phy.AlphaTriCount > 0;
             if (!tn && !at) continue;
             _gd.BlendState = ResolveBlendState(phy.BlendAsb, phy.BlendAdb);
-            SetPhyEffect(rd);
+            SetPhyAlphaEffect(rd);
             _gd.SetVertexBuffer(rd.VertexBuffer); _gd.Indices = rd.IndexBuffer;
-            foreach (var pass in _effect.CurrentTechnique.Passes)
+            foreach (var pass in _alphaTestEffect.CurrentTechnique.Passes)
             {
                 pass.Apply();
                 if (tn) _gd.DrawIndexedPrimitives(PrimitiveType.TriangleList, 0, 0, phy.NormalTriCount);
@@ -305,6 +314,14 @@ public class C3Renderer : IDisposable
         _effect.Texture = ht ? rd.Texture : null;
         _effect.DiffuseColor = new Vector3(phy.R, phy.G, phy.B);
         _effect.Alpha = phy.Alpha;
+    }
+    private void SetPhyAlphaEffect(PhyRenderData rd)
+    {
+        var phy = rd.Phy;
+        _alphaTestEffect.VertexColorEnabled = true;
+        _alphaTestEffect.Texture = rd.Texture;
+        _alphaTestEffect.DiffuseColor = new Vector3(phy.R, phy.G, phy.B);
+        _alphaTestEffect.Alpha = phy.Alpha;
     }
 
     // 5=SrcAlpha, 6=InvSrcAlpha (AlphaBlend) · 2=One/One (Additive)
@@ -361,5 +378,6 @@ public class C3Renderer : IDisposable
     {
         Unload();
         _effect?.Dispose();
+        _alphaTestEffect?.Dispose();
     }
 }
