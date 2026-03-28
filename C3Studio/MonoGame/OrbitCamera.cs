@@ -19,7 +19,7 @@ public sealed class OrbitCamera
 
     // Limits
     private const float MinRadius = 20f;
-    private const float MaxRadius = 1200f;
+    private const float MaxRadius = 12000f;
     private const float MinPitch = -MathHelper.PiOver2 + 0.05f;
     private const float MaxPitch = MathHelper.PiOver2 - 0.05f;
 

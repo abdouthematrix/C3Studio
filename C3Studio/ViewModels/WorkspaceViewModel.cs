@@ -20,6 +20,13 @@ public class WorkspaceViewModel : ViewModelBase
 
     private C3StudioGame? _game;
 
+    // ── Multi-file backing list ───────────────────────────────────────────
+    /// <summary>
+    /// Holds all paths selected via BrowseFile (multi-select).
+    /// ModelPath is a display-only summary derived from this list.
+    /// </summary>
+    private List<string> _modelPaths = new();
+
     private string _modelPath = string.Empty;
     private string _texturePath = string.Empty;
     private string _motionPath = string.Empty;
@@ -35,10 +42,35 @@ public class WorkspaceViewModel : ViewModelBase
 
     // ── Bindable properties ───────────────────────────────────────────────
 
+    /// <summary>
+    /// Bound to the ModelPath textbox. When the user types a path directly,
+    /// _modelPaths is updated so LoadModel() picks it up without requiring a Browse.
+    /// Shows "N files selected" (read-only summary) after a multi-file Browse.
+    /// </summary>
     public string ModelPath
     {
         get => _modelPath;
-        set => Set(ref _modelPath, value);
+        set
+        {
+            if (!Set(ref _modelPath, value)) return;
+
+            // Keep _modelPaths in sync with whatever the user typed.
+            // If the box is empty, clear the list so the Load button disables.
+            // If it contains a real path (not our own "N files selected" summary),
+            // treat it as a single manually-entered file.
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                _modelPaths = new List<string>();
+            }
+            else if (!value.EndsWith("files selected", StringComparison.Ordinal))
+            {
+                var path = value.Trim();
+                _modelPaths = new List<string> { path };
+                // Auto-detect texture for the manually entered path.
+                TexturePath = FindTexture(path);
+            }
+            // "N files selected" → leave _modelPaths as-is (multi-browse result).
+        }
     }
 
     public string TexturePath
@@ -191,7 +223,7 @@ public class WorkspaceViewModel : ViewModelBase
         _settings = settings;
         _exportService = exportService;
         BrowseFileCommand = Cmd(BrowseFile);
-        LoadModelCommand = Cmd(LoadModel, () => !string.IsNullOrEmpty(ModelPath));
+        LoadModelCommand = Cmd(LoadModel, () => _modelPaths.Count > 0);
         ResetCameraCommand = Cmd(() => _game?.ResetCamera());
         PlayPauseCommand = Cmd(TogglePlay);
         StepFwdCommand = Cmd(() => _game?.StepFrame(1));
@@ -565,46 +597,96 @@ public class WorkspaceViewModel : ViewModelBase
 
     // ── Browse / manual load ──────────────────────────────────────────────
 
+    /// <summary>
+    /// Opens a multi-select file dialog. All chosen .c3 files are stored in
+    /// <see cref="_modelPaths"/>. The display property <see cref="ModelPath"/>
+    /// shows the single path for one file, or "N files selected" for many.
+    /// TexturePath is auto-detected from the first file (single-file pick only).
+    /// </summary>
     private void BrowseFile()
     {
-        var dlg = new OpenFileDialog { Filter = "C3 files (*.c3)|*.c3|All files (*.*)|*.*" };
-        if (dlg.ShowDialog() == DialogResult.OK)
+        using var dlg = new OpenFileDialog
         {
-            ModelPath = dlg.FileName;
-            TexturePath = FindTexture(ModelPath);
-        }
+            Title = "Select one or more C3 model files",
+            Filter = "C3 files (*.c3)|*.c3|All files (*.*)|*.*",
+            Multiselect = true,
+        };
+
+        if (dlg.ShowDialog() != DialogResult.OK || dlg.FileNames.Length == 0)
+            return;
+
+        _modelPaths = dlg.FileNames.ToList();
+
+        // Update display summary
+        ModelPath = _modelPaths.Count == 1
+            ? _modelPaths[0]
+            : $"{_modelPaths.Count} files selected";
+
+        // Auto-detect texture only when a single file is chosen.
+        // For multi-file picks the texture is resolved per-file at load time.
+        TexturePath = _modelPaths.Count == 1
+            ? FindTexture(_modelPaths[0])
+            : string.Empty;
     }
+
     private static string FindTexture(string path)
     {
         string dir = Path.GetDirectoryName(path) ?? string.Empty;
         string baseName = Path.GetFileNameWithoutExtension(path);
-        if (string.IsNullOrEmpty(dir) || string.IsNullOrEmpty(baseName)) return null;
+        if (string.IsNullOrEmpty(dir) || string.IsNullOrEmpty(baseName)) return string.Empty;
         foreach (var ext in new[] { ".dds", ".tga", ".png", ".jpg" })
-        { string p = Path.Combine(dir, baseName + ext); if (File.Exists(p)) return p; }
-        return "";
+        {
+            string p = Path.Combine(dir, baseName + ext);
+            if (File.Exists(p)) return p;
+        }
+        return string.Empty;
     }
 
+    /// <summary>
+    /// Loads all files that were selected via <see cref="BrowseFile"/>.
+    /// Each file gets its own auto-detected texture, except when exactly one
+    /// file was picked — in that case the manual <see cref="TexturePath"/> is
+    /// used as an override (matching the original single-file behaviour).
+    /// </summary>
     private void LoadModel()
     {
-        if (_game == null || string.IsNullOrEmpty(ModelPath)) return;
+        if (_game == null || _modelPaths.Count == 0) return;
+
         try
         {
-            IEnumerable<(string MeshPath, string? TexturePath)> parts = new List<(string, string?)>
-            {
-                (ModelPath, TexturePath),
-            };
+            IEnumerable<(string MeshPath, string? TexturePath)> parts;
 
-            _game!.LoadC3Parts(parts, motionPath: MotionPath);
-            //_game.LoadC3Asset(ModelPath,
-            //       texturePath: string.IsNullOrEmpty(TexturePath) ? null : TexturePath);
-            StatusMessage = $"Loaded: {Path.GetFileName(ModelPath)}";
+            if (_modelPaths.Count == 1)
+            {
+                // Single file: honour a manual TexturePath override, fall back to auto-detect.
+                var tex = !string.IsNullOrEmpty(TexturePath) ? TexturePath : FindTexture(_modelPaths[0]);
+                parts = new[] { (_modelPaths[0], string.IsNullOrEmpty(tex) ? null : tex) };
+            }
+            else
+            {
+                // Multiple files: auto-detect a texture alongside each mesh.
+                parts = _modelPaths.Select(mesh =>
+                {
+                    string tex = FindTexture(mesh);
+                    return (MeshPath: mesh, TexturePath: string.IsNullOrEmpty(tex) ? null : tex);
+                });
+            }
+
+            _game.LoadC3Parts(parts, motionPath: MotionPath);
+
+            StatusMessage = _modelPaths.Count == 1
+                ? $"Loaded: {Path.GetFileName(_modelPaths[0])}"
+                : $"Loaded {_modelPaths.Count} files";
         }
-        catch (Exception ex) { StatusMessage = $"Error: {ex.Message}"; }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Error: {ex.Message}";
+        }
     }
 
     private void BrowseTexture()
     {
-        var dlg = new OpenFileDialog
+        using var dlg = new OpenFileDialog
         {
             Filter = "Texture files (*.dds;*.tga;*.png;*.jpg)|*.dds;*.tga;*.png;*.jpg|All files (*.*)|*.*"
         };
@@ -613,7 +695,7 @@ public class WorkspaceViewModel : ViewModelBase
 
     private void BrowseMotion()
     {
-        var dlg = new OpenFileDialog { Filter = "C3 motion files (*.c3)|*.c3|All files (*.*)|*.*" };
+        using var dlg = new OpenFileDialog { Filter = "C3 motion files (*.c3)|*.c3|All files (*.*)|*.*" };
         if (dlg.ShowDialog() == DialogResult.OK) MotionPath = dlg.FileName;
     }
 
@@ -686,6 +768,4 @@ public class WorkspaceViewModel : ViewModelBase
 
     private void OnFrameChanged(int current, int total) =>
         FrameLabel = $"{current} / {total}";
-
-
 }
