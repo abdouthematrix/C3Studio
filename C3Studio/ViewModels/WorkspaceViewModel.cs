@@ -172,7 +172,7 @@ public class WorkspaceViewModel : ViewModelBase
         set { _exportConflictMode = value; OnPropertyChanged(); }
     }
 
-    private ExportLayout _exportLayout = ExportLayout.NamedFolder;
+    private ExportLayout _exportLayout = ExportLayout.NamedFolderFlat;
     public ExportLayout ExportLayout
     {
         get => _exportLayout;
@@ -507,7 +507,20 @@ public class WorkspaceViewModel : ViewModelBase
     private void BrowseFile()
     {
         var dlg = new OpenFileDialog { Filter = "C3 files (*.c3)|*.c3|All files (*.*)|*.*" };
-        if (dlg.ShowDialog() == DialogResult.OK) ModelPath = dlg.FileName;
+        if (dlg.ShowDialog() == DialogResult.OK)
+        {
+            ModelPath = dlg.FileName;           
+            TexturePath = FindTexture(ModelPath);
+        }
+    }
+    private static string FindTexture(string path)
+    {
+        string dir = Path.GetDirectoryName(path) ?? string.Empty;
+        string baseName = Path.GetFileNameWithoutExtension(path);
+        if (string.IsNullOrEmpty(dir) || string.IsNullOrEmpty(baseName)) return null;
+        foreach (var ext in new[] { ".dds", ".tga", ".png", ".jpg" })
+        { string p = Path.Combine(dir, baseName + ext); if (File.Exists(p)) return p; }
+        return "";
     }
 
     private void LoadModel()
