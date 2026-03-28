@@ -7,15 +7,6 @@
     HorizontalAlignment="Stretch"
     VerticalAlignment="Stretch"
     Background="{StaticResource Br.BgDeep}">
-
-    <UserControl.Resources>
-        <cv:ValidationStatusToBrushConverter x:Key="StatusToBrush" />
-        <cv:ValidationStatusToGlyphConverter x:Key="StatusToGlyph" />
-        <cv:CategoryToBrushConverter x:Key="CatToBrush" />
-        <cv:BoolToVisibilityConverter x:Key="BoolToVis" />
-        <cv:InverseBoolToVisibilityConverter x:Key="InvBoolToVis" />
-        <cv:ZeroToCollapsedConverter x:Key="ZeroToCollapsed" />
-    </UserControl.Resources>
     <ScrollViewer>
         <Grid>
             <Grid.ColumnDefinitions>

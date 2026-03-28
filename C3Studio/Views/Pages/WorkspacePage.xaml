@@ -307,7 +307,7 @@
                             ItemsSource="{Binding AvailableMotions}"
                             SelectedItem="{Binding SelectedMotion, Mode=TwoWay}"
                             Style="{StaticResource NpcListBox}"
-                            Visibility="{Binding AvailableMotions.Count, Converter={StaticResource GreaterThanZeroToVisibility}}">
+                            Visibility="{Binding AvailableMotions.Count, Converter={StaticResource ZeroToCollapsed}}">
                             <ListBox.ItemTemplate>
                                 <DataTemplate>
                                     <StackPanel VerticalAlignment="Center" Orientation="Horizontal">

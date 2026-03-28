@@ -1,12 +1,20 @@
-<Application x:Class="C3Studio.App"
-             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             ShutdownMode="OnMainWindowClose">
+<Application
+    x:Class="C3Studio.App"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:cv="clr-namespace:C3Studio.Converters"
+    ShutdownMode="OnMainWindowClose">
     <Application.Resources>
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>
-                <ResourceDictionary Source="Resources/Styles.xaml"/>
+                <ResourceDictionary Source="Resources/Styles.xaml" />
             </ResourceDictionary.MergedDictionaries>
+            <cv:ValidationStatusToBrushConverter x:Key="StatusToBrush" />
+            <cv:ValidationStatusToGlyphConverter x:Key="StatusToGlyph" />
+            <cv:CategoryToBrushConverter x:Key="CatToBrush" />
+            <cv:BoolToVisibilityConverter x:Key="BoolToVis" />
+            <cv:InverseBoolToVisibilityConverter x:Key="InvBoolToVis" />
+            <cv:ZeroToCollapsedConverter x:Key="ZeroToCollapsed" />
         </ResourceDictionary>
     </Application.Resources>
 </Application>
