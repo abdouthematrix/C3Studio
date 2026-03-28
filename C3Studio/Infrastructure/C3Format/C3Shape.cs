@@ -60,7 +60,7 @@ public class C3Shape : IDisposable
     private const int SMOOTH = 10;
     private Vector3 _lastA, _lastB;
 
-    public static C3Shape Load(BinaryReader br, bool loadTexture = true)
+    public static C3Shape Load(BinaryReader br)
     {
         var s = new C3Shape();
         uint nameLen = br.ReadUInt32();
@@ -77,7 +77,6 @@ public class C3Shape : IDisposable
         }
         uint texLen = br.ReadUInt32();
         s.TexName = Encoding.ASCII.GetString(br.ReadBytes((int)texLen)).TrimEnd('\0');
-        if (loadTexture) s.TexIndex = C3Texture.Texture_Load(s.TexName);
         uint seg = br.ReadUInt32();
         s.SetSegment((int)seg);
         return s;

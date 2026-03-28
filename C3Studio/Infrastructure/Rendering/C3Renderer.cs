@@ -78,7 +78,7 @@ public class C3Renderer : IDisposable
     public void LoadModel(string c3FilePath, string? texturePath=null, Matrix? worldRotation=null)
     {
         Unload();
-        _model = C3Model.Load(c3FilePath, loadTextures:true, gd:_gd);
+        _model = C3Model.Load(c3FilePath, gd:_gd);
         _model.PhyReplaced += OnPhyReplaced;
 
         if (worldRotation.HasValue)

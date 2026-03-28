@@ -31,14 +31,13 @@ public class C3Ptcl : IDisposable
     private VertexPositionColorTexture[]? _vb;
     private short[]?                      _ib;
 
-    public static C3Ptcl Load(BinaryReader br, bool loadTexture = true)
+    public static C3Ptcl Load(BinaryReader br)
     {
         var p = new C3Ptcl();
         uint nameLen = br.ReadUInt32();
         p.Name = Encoding.ASCII.GetString(br.ReadBytes((int)nameLen)).TrimEnd('\0');
         uint texLen = br.ReadUInt32();
         p.TexName = Encoding.ASCII.GetString(br.ReadBytes((int)texLen)).TrimEnd('\0');
-        if (loadTexture) p.TexIndex = C3Texture.Texture_Load(p.TexName);
         p.TexRow   = (int)br.ReadUInt32();
         p.MaxCount = (int)br.ReadUInt32();
         p._vb = new VertexPositionColorTexture[p.MaxCount * 4];

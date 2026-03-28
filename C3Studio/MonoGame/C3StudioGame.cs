@@ -197,7 +197,7 @@ public class C3StudioGame : WpfGame
             if (AssetService != null)
             {
                 using var stream = AssetService.Open(relativePath);
-                var model = C3Model.LoadFromStream(stream, loadTextures: true, gd: GraphicsDevice);
+                var model = C3Model.LoadFromStream(stream, gd: GraphicsDevice);
                 _renderer.LoadModelDirect(model, worldRotation: WorldCorrection);
                 _renderer.OverrideTexture(OverrideTexture(texturePath));
                 AutoFitCamera(model);

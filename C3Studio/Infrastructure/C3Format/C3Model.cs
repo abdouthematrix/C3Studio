@@ -29,20 +29,16 @@ public partial class C3Model
     public event Action<int>? PhyReplaced;
 
     // ------------------------------------------------------------------
-    public static C3Model Load(string filePath,
-                               bool loadTextures = true,
-                               GraphicsDevice? gd = null)
+    public static C3Model Load(string filePath, GraphicsDevice? gd = null)
     {
         if (!File.Exists(filePath))
             throw new FileNotFoundException($"C3 file not found: {filePath}");
         using var fs    = File.OpenRead(filePath);
-        var model       = LoadFromStream(fs, loadTextures, gd);
+        var model       = LoadFromStream(fs, gd);
         return model;
     }
 
-    public static C3Model LoadFromStream(Stream stream,
-                                     bool loadTextures = true,
-                                     GraphicsDevice? gd = null)
+    public static C3Model LoadFromStream(Stream stream, GraphicsDevice? gd = null)
     {
         var model = new C3Model();
         using var br = new BinaryReader(stream, Encoding.ASCII, leaveOpen: true);
@@ -76,29 +72,20 @@ public partial class C3Model
                     break;
 
                 case "OMNI":
-                    {
-                        var o = new C3Omni();
-                        uint nl = br.ReadUInt32();
-                        o.Name = Encoding.ASCII.GetString(br.ReadBytes((int)nl)).TrimEnd('\0');
-                        o.Position = new Vector3(br.ReadSingle(), br.ReadSingle(), br.ReadSingle());
-                        o.Color = new Vector3(br.ReadSingle(), br.ReadSingle(), br.ReadSingle());
-                        model.Omnis.Add(o);
-                        break;
-                    }
+                    model.Omnis.Add(C3Omni.Load(br));
+                    break;
+
 
                 case "PTCL":
-                    model.Ptcls.Add(C3Ptcl.Load(br, loadTextures));
+                    model.Ptcls.Add(C3Ptcl.Load(br));
                     break;
 
                 case "SCEN":
-                    {
-                        var sc = ReadSceneBlock(br, loadTextures, gd);
-                        if (sc != null) model.Scenes.Add(sc);
-                        break;
-                    }
+                    model.Scenes.Add(C3Scene.Load(br));
+                    break;                   
 
                 case "SHAP":
-                    model.Shapes.Add(C3Shape.Load(br, loadTextures));
+                    model.Shapes.Add(C3Shape.Load(br));
                     break;
 
                 case "SMOT":
@@ -191,7 +178,7 @@ public partial class C3Model
     {
         Motions.Clear();
         foreach (var phy in Phys) phy.Motion = null;
-        var src = LoadFromStream(stream, loadTextures: false);
+        var src = LoadFromStream(stream);
         foreach (var m in src.Motions) Motions.Add(m);
         BindPhyMotions(this, rotationMatrix);
     }
@@ -216,48 +203,7 @@ public partial class C3Model
 
     public int MaxFrameCount
     { get { int m=0; foreach(var mo in Motions) if(mo.FrameCount>m) m=mo.FrameCount; return m; } }
-
-    // ------------------------------------------------------------------
-    internal static C3Scene? ReadSceneBlock(BinaryReader br,
-                                            bool loadTextures, GraphicsDevice? gd)
-    {
-        var scene  = new C3Scene();
-        uint nLen  = br.ReadUInt32();
-        scene.Name = Encoding.ASCII.GetString(br.ReadBytes((int)nLen)).TrimEnd('\0');
-
-        uint vecCount = br.ReadUInt32();
-        scene.Vertices = new SceneVertex[vecCount];
-        for (int i=0;i<(int)vecCount;i++)
-        {
-            scene.Vertices[i].Position=new Vector3(br.ReadSingle(),br.ReadSingle(),br.ReadSingle());
-            scene.Vertices[i].Normal  =new Vector3(br.ReadSingle(),br.ReadSingle(),br.ReadSingle());
-            scene.Vertices[i].UV0     =new Vector2(br.ReadSingle(),br.ReadSingle());
-            scene.Vertices[i].UV1     =new Vector2(br.ReadSingle(),br.ReadSingle());
-        }
-
-        uint triCount = br.ReadUInt32();
-        scene.Indices = new ushort[triCount*3];
-        for (int i=0;i<(int)(triCount*3);i++) scene.Indices[i]=br.ReadUInt16();
-
-        uint texLen  = br.ReadUInt32();
-        scene.TexName = Encoding.ASCII.GetString(br.ReadBytes((int)texLen)).TrimEnd('\0');
-        if (loadTextures) scene.TexIndex = C3Texture.Texture_Load(scene.TexName);
-
-        uint lmLen = br.ReadUInt32();
-        if (lmLen > 0)
-        {
-            scene.LightTexName = Encoding.ASCII.GetString(br.ReadBytes((int)lmLen)).TrimEnd('\0');
-            if (loadTextures) scene.LightTexIndex = C3Texture.Texture_Load(scene.LightTexName);
-        }
-
-        uint fc = br.ReadUInt32();
-        scene.Frames = new Matrix[fc];
-        for (int i=0;i<(int)fc;i++) scene.Frames[i]=C3Motion.ReadMatrix(br);
-
-        if (gd != null) scene.UploadGPU(gd);
-        return scene;
-    }
-
+       
     internal static void BindPhyMotions(C3Model model, Matrix? rotation = null)
     {
         for (int i = 0; i < model.Phys.Count; i++)

@@ -2,7 +2,7 @@ namespace C3Studio.Models;
 
 public class C3DSimpleObjInfo
 {
-    public const int MaxParts = 16;
+    public const int MaxParts = 4;
     public uint   IdType    { get; set; }
     public int    Parts     { get; set; }
     public uint[] MeshIds   { get; } = new uint[MaxParts];

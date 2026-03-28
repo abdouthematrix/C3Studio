@@ -46,6 +46,39 @@ public class C3Scene : IDisposable
     private Texture2D?    _tex;
     private Texture2D?    _lightTex;
 
+    public static C3Scene Load(BinaryReader br)
+    {
+        var scene = new C3Scene();
+        uint nLen = br.ReadUInt32();
+        scene.Name = Encoding.ASCII.GetString(br.ReadBytes((int)nLen)).TrimEnd('\0');
+
+        uint vecCount = br.ReadUInt32();
+        scene.Vertices = new SceneVertex[vecCount];
+        for (int i = 0; i < (int)vecCount; i++)
+        {
+            scene.Vertices[i].Position = new Vector3(br.ReadSingle(), br.ReadSingle(), br.ReadSingle());
+            scene.Vertices[i].Normal = new Vector3(br.ReadSingle(), br.ReadSingle(), br.ReadSingle());
+            scene.Vertices[i].UV0 = new Vector2(br.ReadSingle(), br.ReadSingle());
+            scene.Vertices[i].UV1 = new Vector2(br.ReadSingle(), br.ReadSingle());
+        }
+
+        uint triCount = br.ReadUInt32();
+        scene.Indices = new ushort[triCount * 3];
+        for (int i = 0; i < (int)(triCount * 3); i++) scene.Indices[i] = br.ReadUInt16();
+
+        uint texLen = br.ReadUInt32();
+        scene.TexName = Encoding.ASCII.GetString(br.ReadBytes((int)texLen)).TrimEnd('\0');
+        uint lmLen = br.ReadUInt32();
+        if (lmLen > 0)
+            scene.LightTexName = Encoding.ASCII.GetString(br.ReadBytes((int)lmLen)).TrimEnd('\0');
+        uint fc = br.ReadUInt32();
+        scene.Frames = new Matrix[fc];
+        for (int i = 0; i < (int)fc; i++) scene.Frames[i] = C3Motion.ReadMatrix(br);
+
+      //  if (gd != null) scene.UploadGPU(gd);
+        return scene;
+    }
+
     public void UploadGPU(GraphicsDevice gd)
     {
         _vb?.Dispose(); _ib?.Dispose();
@@ -93,4 +126,6 @@ public class C3Scene : IDisposable
         if (TexIndex      != -1) { C3Texture.Texture_Unload(TexIndex);      TexIndex      = -1; }
         if (LightTexIndex != -1) { C3Texture.Texture_Unload(LightTexIndex); LightTexIndex = -1; }
     }
+
+   
 }
