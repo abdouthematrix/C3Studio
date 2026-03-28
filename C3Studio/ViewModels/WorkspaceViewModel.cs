@@ -274,7 +274,7 @@ public class WorkspaceViewModel : ViewModelBase
             _assets.Initialize(_settings.ConquerPath);
             await _gameData.LoadAsync(_settings.ConquerPath);
             BuildAssetTree();
-            StatusMessage = $"Ready — {_gameData.Npcs.Count} NPCs, {_gameData.SimpleObjs.Count} objects.";
+            StatusMessage = $"Ready — {_gameData.Npcs.Count} NPCs, {_gameData.SimpleObjs.Count} objects, {_gameData.Effects.Count} effects.";
         }
         catch (Exception ex)
         {
@@ -297,7 +297,8 @@ public class WorkspaceViewModel : ViewModelBase
         AssetTree.Clear();
         AssetTree.Add(BuildNpcRoot());
         AssetTree.Add(BuildSimpleObjRoot());
-        RefreshFilter();                   // ← add this line
+        AssetTree.Add(BuildEffectRoot());
+        RefreshFilter();
     }
 
     private AssetNode BuildNpcRoot()
@@ -315,16 +316,23 @@ public class WorkspaceViewModel : ViewModelBase
         var obj = _gameData.FindSimpleObj(npc.SimpleObjId);
         var motions = BuildMotionEntries(npc);
 
-        if (obj != null || motions.Length > 0)
-        {
-            var (meshPaths, texturePaths) = obj != null
-                ? BuildMeshArrays(obj)
-                : ([], []);
+        var (objMeshes, objTextures) = obj != null
+            ? BuildMeshArrays(obj)
+            : ([], []);
 
+        var (efxMeshes, efxTextures) = !string.IsNullOrEmpty(npc.Effect)
+            ? BuildEffectParts(npc.Effect)
+            : ([], []);
+
+        var allMeshes = objMeshes.Concat(efxMeshes).ToArray();
+        var allTextures = objTextures.Concat(efxTextures).ToArray();
+
+        if (allMeshes.Length > 0 || motions.Length > 0)
+        {
             node.AssetData = new AssetData
             {
-                MeshPaths = meshPaths,
-                TexturePaths = texturePaths,
+                MeshPaths = allMeshes,
+                TexturePaths = allTextures,
                 Motions = motions
             };
         }
@@ -371,7 +379,60 @@ public class WorkspaceViewModel : ViewModelBase
         return node;
     }
 
-    // ── Search / filter ───────────────────────────────────────────────────
+    private AssetNode BuildEffectRoot()
+    {
+        var root = new AssetNode { Icon = "✨", Label = $"Effects ({_gameData.Effects.Count})" };
+        foreach (var effect in _gameData.Effects)
+            root.Children.Add(BuildEffectNode(effect));
+        return root;
+    }
+
+    private AssetNode BuildEffectNode(C3DEffectInfo effect)
+    {
+        var label = effect.Lev > 0
+            ? $"[{effect.Key}]  Lev {effect.Lev}"
+            : $"[{effect.Key}]";
+
+        // Resolve all slots up front
+        var meshPaths = new string[effect.Amount];
+        var texPaths = new string[effect.Amount];
+        for (int i = 0; i < effect.Amount; i++)
+        {
+            meshPaths[i] = _gameData.ResolveEffectObj(effect.EffectIds[i])
+                           ?? $"? ({effect.EffectIds[i]})";
+            texPaths[i] = _gameData.ResolveTexture((ulong)effect.TextureIds[i])
+                           ?? $"? ({effect.TextureIds[i]})";
+        }
+
+        // Parent node loads all slots merged (same pattern as SimpleObj)
+        var node = new AssetNode
+        {
+            Icon = "✨",
+            Label = label,
+            AssetData = effect.Amount > 0
+                ? new AssetData { MeshPaths = meshPaths, TexturePaths = texPaths }
+                : null
+        };
+
+        // Per-slot children for individual loading
+        for (int i = 0; i < effect.Amount; i++)
+        {
+            if (meshPaths[i].StartsWith('?')) continue;
+
+            node.Children.Add(new AssetNode
+            {
+                Icon = "▫",
+                Label = $"Slot {i} — EfxId {effect.EffectIds[i]}  ·  {Path.GetFileName(texPaths[i])}",
+                AssetData = new AssetData
+                {
+                    MeshPaths = [meshPaths[i]],
+                    TexturePaths = [texPaths[i]]
+                }
+            });
+        }
+
+        return node;
+    }
 
     private void RefreshFilter()
     {
@@ -509,7 +570,7 @@ public class WorkspaceViewModel : ViewModelBase
         var dlg = new OpenFileDialog { Filter = "C3 files (*.c3)|*.c3|All files (*.*)|*.*" };
         if (dlg.ShowDialog() == DialogResult.OK)
         {
-            ModelPath = dlg.FileName;           
+            ModelPath = dlg.FileName;
             TexturePath = FindTexture(ModelPath);
         }
     }
@@ -530,12 +591,12 @@ public class WorkspaceViewModel : ViewModelBase
         {
             IEnumerable<(string MeshPath, string? TexturePath)> parts = new List<(string, string?)>
             {
-                (ModelPath, TexturePath),                
+                (ModelPath, TexturePath),
             };
 
             _game!.LoadC3Parts(parts, motionPath: MotionPath);
             //_game.LoadC3Asset(ModelPath,
-             //       texturePath: string.IsNullOrEmpty(TexturePath) ? null : TexturePath);
+            //       texturePath: string.IsNullOrEmpty(TexturePath) ? null : TexturePath);
             StatusMessage = $"Loaded: {Path.GetFileName(ModelPath)}";
         }
         catch (Exception ex) { StatusMessage = $"Error: {ex.Message}"; }
@@ -559,6 +620,31 @@ public class WorkspaceViewModel : ViewModelBase
     private void ApplyMotion() => ApplyMotionSilent(MotionPath);
 
     // ── Helpers ───────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Resolves all renderable slots for a named effect key (e.g. "1ghost", "10000").
+    /// Returns empty arrays when the key is unknown or has no resolvable slots.
+    /// </summary>
+    private (string[] Meshes, string[] Textures) BuildEffectParts(string effectKey)
+    {
+        var effect = _gameData.FindEffect(effectKey);
+        if (effect == null || effect.Amount == 0) return ([], []);
+
+        var meshes = new List<string>(effect.Amount);
+        var textures = new List<string>(effect.Amount);
+
+        for (int i = 0; i < effect.Amount; i++)
+        {
+            var mesh = _gameData.ResolveEffectObj(effect.EffectIds[i]);
+            if (string.IsNullOrEmpty(mesh)) continue;   // unresolvable slot — skip
+
+            meshes.Add(mesh);
+            textures.Add(_gameData.ResolveTexture((ulong)effect.TextureIds[i])
+                         ?? $"? ({effect.TextureIds[i]})");
+        }
+
+        return (meshes.ToArray(), textures.ToArray());
+    }
 
     private (string[] Paths, string[] Textures) BuildMeshArrays(C3DSimpleObjInfo obj)
     {

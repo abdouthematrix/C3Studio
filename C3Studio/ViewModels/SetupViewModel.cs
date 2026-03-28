@@ -25,9 +25,10 @@ public class SetupViewModel : ViewModelBase
     private static readonly string[] RequiredWdf     = ["c3.wdf", "data.wdf"];
     private static readonly string[] RequiredIni     =
     [
-        "3dtexture.ini", "3dmotion.ini", "3dobj.ini", "3DSimpleObj.ini",
+        "npc.ini", "3DSimpleObj.ini", "3DEffect.ini",
+        "3dobj.ini", "3dtexture.ini", "3dmotion.ini", "3DEffectObj.ini",
         "3DsimpleRole.ini", "MountMotion.ini", "WeaponMotion.ini",
-        "armor.ini", "armet.ini", "weapon.ini", "Mount.ini", "npc.ini",
+        "armor.ini", "armet.ini", "weapon.ini", "Mount.ini", 
     ];
 
     public string ConquerPath
