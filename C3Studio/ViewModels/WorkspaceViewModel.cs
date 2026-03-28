@@ -2,15 +2,14 @@ using C3Studio.Core.Models;
 using C3Studio.Core.Services;
 using C3Studio.Models;
 using C3Studio.MonoGame;
-using Microsoft.Win32;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
+using System.Windows.Forms;
 using System.Windows.Input;
-
 namespace C3Studio.ViewModels;
 
 public class WorkspaceViewModel : ViewModelBase
@@ -137,14 +136,60 @@ public class WorkspaceViewModel : ViewModelBase
     public ObservableCollection<AssetNode> FilteredAssetTree { get; } = new();
     public ICommand ClearSearchCommand { get; }
 
+    // ── Export ───────────────────────────────────────────────────
+
+    private readonly IAssetExportService _exportService;
+    private CancellationTokenSource? _exportCts;
+    private string _exportStatus = string.Empty;
+    public string ExportStatus
+    {
+        get => _exportStatus;
+        private set { _exportStatus = value; OnPropertyChanged(); }
+    }
+
+    private bool _isExporting;
+    public bool IsExporting
+    {
+        get => _isExporting;
+        private set
+        {
+            _isExporting = value;
+            OnPropertyChanged();
+        }
+    }
+
+    private bool _exportMotions = true;
+    public bool ExportMotions
+    {
+        get => _exportMotions;
+        set { _exportMotions = value; OnPropertyChanged(); }
+    }
+
+    private ExportConflict _exportConflictMode = ExportConflict.Skip;
+    public ExportConflict ExportConflictMode
+    {
+        get => _exportConflictMode;
+        set { _exportConflictMode = value; OnPropertyChanged(); }
+    }
+
+    private ExportLayout _exportLayout = ExportLayout.NamedFolder;
+    public ExportLayout ExportLayout
+    {
+        get => _exportLayout;
+        set { _exportLayout = value; OnPropertyChanged(); }
+    }
+    public ICommand ExportNodeCommand { get; } // assigned in ctor
+    private bool CanExport() => SelectedNode?.IsLoadable == true && !IsExporting;
+
     public WorkspaceViewModel(IGameDataService gameData,
                                IAssetFileService assets,
+                               IAssetExportService exportService,
                                ISettingsService settings)
     {
         _gameData = gameData;
         _assets = assets;
         _settings = settings;
-
+        _exportService = exportService;
         BrowseFileCommand = Cmd(BrowseFile);
         LoadModelCommand = Cmd(LoadModel, () => !string.IsNullOrEmpty(ModelPath));
         ResetCameraCommand = Cmd(() => _game?.ResetCamera());
@@ -156,8 +201,68 @@ public class WorkspaceViewModel : ViewModelBase
         BrowseMotionCommand = Cmd(BrowseMotion);
         ApplyMotionCommand = Cmd(ApplyMotion, () => !string.IsNullOrEmpty(MotionPath));
         ClearSearchCommand = Cmd(() => SearchText = string.Empty);
+        ExportNodeCommand = Cmd(ExportNode, () => CanExport());
     }
 
+    private async void ExportNode()
+    {
+        if (SelectedNode?.AssetData == null) return;
+
+        using var dlg = new FolderBrowserDialog
+        {
+            Description = $"Export '{SelectedNode.Label}' to…",
+            UseDescriptionForTitle = true,
+            ShowNewFolderButton = true,
+        };
+
+        if (dlg.ShowDialog() != DialogResult.OK)
+            return;
+
+        _exportCts = new CancellationTokenSource();
+        IsExporting = true;
+        ExportStatus = "Exporting…";
+
+        try
+        {
+            var progress = new Progress<string>(msg =>
+                System.Windows.Application.Current.Dispatcher.Invoke(() => ExportStatus = msg));
+
+            var result = await _exportService.ExportNodeAsync(
+                data: SelectedNode.AssetData,
+                assetLabel: SelectedNode.Label,
+                destFolder: dlg.SelectedPath,
+                layout: ExportLayout,
+                includeMotions: ExportMotions,
+                conflictMode: ExportConflictMode,
+                progress: progress,
+                ct: _exportCts.Token);
+
+            ExportStatus = result.ToString();
+
+            if (result.HasErrors)
+                ShowExportErrors(result);
+        }
+        catch (OperationCanceledException)
+        {
+            ExportStatus = "Export cancelled.";
+        }
+        finally
+        {
+            IsExporting = false;
+            _exportCts.Dispose();
+            _exportCts = null;
+        }
+    }
+
+    /// <summary>Cancels an in-progress export (bind to a Cancel button).</summary>
+    public void CancelExport() => _exportCts?.Cancel();
+
+    private static void ShowExportErrors(ExportResult result)
+    {
+        var msg = string.Join("\n", result.Failed.Select(f => $"• {f.Path}: {f.Reason}"));
+        MessageBox.Show(msg, "Export — some files failed",
+            MessageBoxButtons.OK, MessageBoxIcon.Warning);
+    }
     // ── Initialisation ────────────────────────────────────────────────────
 
     public async Task LoadAsync()
@@ -402,7 +507,7 @@ public class WorkspaceViewModel : ViewModelBase
     private void BrowseFile()
     {
         var dlg = new OpenFileDialog { Filter = "C3 files (*.c3)|*.c3|All files (*.*)|*.*" };
-        if (dlg.ShowDialog() == true) ModelPath = dlg.FileName;
+        if (dlg.ShowDialog() == DialogResult.OK) ModelPath = dlg.FileName;
     }
 
     private void LoadModel()
@@ -423,13 +528,13 @@ public class WorkspaceViewModel : ViewModelBase
         {
             Filter = "Texture files (*.dds;*.tga;*.png;*.jpg)|*.dds;*.tga;*.png;*.jpg|All files (*.*)|*.*"
         };
-        if (dlg.ShowDialog() == true) TexturePath = dlg.FileName;
+        if (dlg.ShowDialog() == DialogResult.OK) TexturePath = dlg.FileName;
     }
 
     private void BrowseMotion()
     {
         var dlg = new OpenFileDialog { Filter = "C3 motion files (*.c3)|*.c3|All files (*.*)|*.*" };
-        if (dlg.ShowDialog() == true) MotionPath = dlg.FileName;
+        if (dlg.ShowDialog() == DialogResult.OK) MotionPath = dlg.FileName;
     }
 
     private void ApplyMotion() => ApplyMotionSilent(MotionPath);
@@ -476,4 +581,6 @@ public class WorkspaceViewModel : ViewModelBase
 
     private void OnFrameChanged(int current, int total) =>
         FrameLabel = $"{current} / {total}";
+
+
 }

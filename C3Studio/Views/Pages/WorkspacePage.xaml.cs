@@ -53,4 +53,10 @@ public partial class WorkspacePage : UserControl
             e.NewValue is Core.Models.AssetNode node)
             vm.SelectedNode = node;
     }
+
+    private void CancelExport_Click(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is WorkspaceViewModel vm)
+            vm.CancelExport();
+    }
 }

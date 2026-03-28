@@ -3,6 +3,8 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:cv="clr-namespace:C3Studio.Converters"
+    xmlns:services="clr-namespace:C3Studio.Core.Services"
+    xmlns:sys="clr-namespace:System;assembly=mscorlib"
     ShutdownMode="OnMainWindowClose">
     <Application.Resources>
         <ResourceDictionary>
@@ -16,6 +18,24 @@
             <cv:InverseBoolToVisibilityConverter x:Key="InvBoolToVis" />
             <cv:ZeroToCollapsedConverter x:Key="ZeroToCollapsed" />
             <cv:NullOrEmptyToVisibilityConverter x:Key="NullOrEmptyToVis" />
+
+            <ObjectDataProvider
+                x:Key="ExportConflictValues"
+                MethodName="GetValues"
+                ObjectType="{x:Type sys:Enum}">
+                <ObjectDataProvider.MethodParameters>
+                    <x:Type TypeName="services:ExportConflict" />
+                </ObjectDataProvider.MethodParameters>
+            </ObjectDataProvider>
+
+            <ObjectDataProvider
+                x:Key="ExportLayoutValues"
+                MethodName="GetValues"
+                ObjectType="{x:Type sys:Enum}">
+                <ObjectDataProvider.MethodParameters>
+                    <x:Type TypeName="services:ExportLayout" />
+                </ObjectDataProvider.MethodParameters>
+            </ObjectDataProvider>
         </ResourceDictionary>
     </Application.Resources>
 </Application>

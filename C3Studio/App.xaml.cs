@@ -37,6 +37,7 @@ public partial class App : Application
         sc.AddSingleton<IAssetFileService,  AssetFileService>();
         sc.AddSingleton<IGameDataService,   GameDataService>();
         sc.AddSingleton<INavigationService, NavigationService>();
+        sc.AddSingleton<IAssetExportService, AssetExportService>();
 
         sc.AddTransient<SetupViewModel>();
         sc.AddTransient<WorkspaceViewModel>();

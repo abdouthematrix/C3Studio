@@ -1,7 +1,6 @@
 <ResourceDictionary
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    xmlns:c="clr-namespace:C3Studio.Controls"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"    
     xmlns:cv="clr-namespace:C3Studio.Converters">
 
     <!--
@@ -421,6 +420,117 @@
                             </Track.IncreaseRepeatButton>
                         </Track>
                     </Grid>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!--  ── ContextMenu ─────────────────────────────────────────────────  -->
+    <Style TargetType="ContextMenu">
+        <Setter Property="Background"   Value="{StaticResource Br.BgCard}" />
+        <Setter Property="BorderBrush"  Value="{StaticResource Br.Border}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="Padding"      Value="2" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ContextMenu">
+                    <Border
+                        Background="{TemplateBinding Background}"
+                        BorderBrush="{TemplateBinding BorderBrush}"
+                        BorderThickness="{TemplateBinding BorderThickness}"
+                        CornerRadius="6"
+                        Padding="{TemplateBinding Padding}"
+                        SnapsToDevicePixels="True">
+                        <Border.Effect>
+                            <DropShadowEffect
+                                BlurRadius="16"
+                                Direction="270"
+                                Opacity="0.55"
+                                ShadowDepth="4"
+                                Color="#000000" />
+                        </Border.Effect>
+                        <ItemsPresenter />
+                    </Border>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!--  ── MenuItem ──────────────────────────────────────────────────  -->
+    <Style TargetType="MenuItem">
+        <Setter Property="Background"        Value="Transparent" />
+        <Setter Property="Foreground"        Value="{StaticResource Br.TextPrimary}" />
+        <Setter Property="FontFamily"        Value="Segoe UI" />
+        <Setter Property="FontSize"          Value="12" />
+        <Setter Property="Padding"           Value="12,7" />
+        <Setter Property="Cursor"            Value="Hand" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="MenuItem">
+                    <Border
+                        x:Name="Root"
+                        Background="{TemplateBinding Background}"
+                        CornerRadius="4"
+                        Margin="2,1"
+                        Padding="{TemplateBinding Padding}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="16" />  <!-- icon slot -->
+                                <ColumnDefinition Width="8"  />  <!-- gap       -->
+                                <ColumnDefinition Width="*"  />  <!-- header    -->
+                                <ColumnDefinition Width="Auto"/> <!-- shortcut  -->
+                            </Grid.ColumnDefinitions>
+
+                            <!-- Icon (optional) -->
+                            <ContentPresenter
+                                Grid.Column="0"
+                                ContentSource="Icon"
+                                VerticalAlignment="Center"
+                                HorizontalAlignment="Center"
+                                SnapsToDevicePixels="True" />
+
+                            <!-- Header text -->
+                            <ContentPresenter
+                                Grid.Column="2"
+                                ContentSource="Header"
+                                VerticalAlignment="Center"
+                                RecognizesAccessKey="True" />
+
+                            <!-- Input gesture text -->
+                            <TextBlock
+                                Grid.Column="3"
+                                Margin="16,0,4,0"
+                                VerticalAlignment="Center"
+                                Foreground="{StaticResource Br.TextDim}"
+                                FontSize="11"
+                                Text="{TemplateBinding InputGestureText}" />
+                        </Grid>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsHighlighted" Value="True">
+                            <Setter TargetName="Root" Property="Background"
+                                    Value="{StaticResource Br.BgElevated}" />
+                            <Setter Property="Foreground"
+                                    Value="{StaticResource Br.Gold}" />
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Foreground"
+                                    Value="{StaticResource Br.TextDim}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!--  ── MenuSeparator ────────────────────────────────────────────────  -->
+    <Style TargetType="Separator">
+        <Setter Property="Margin"      Value="8,3" />
+        <Setter Property="Background"  Value="{StaticResource Br.Border}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Separator">
+                    <Border Height="1" Background="{TemplateBinding Background}" />
                 </ControlTemplate>
             </Setter.Value>
         </Setter>

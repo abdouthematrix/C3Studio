@@ -6,10 +6,14 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:models="clr-namespace:C3Studio.Core.Models"
     xmlns:vm="clr-namespace:C3Studio.ViewModels"
+    x:Name="RootControl"
     d:DataContext="{d:DesignInstance vm:WorkspaceViewModel}"
     Background="{StaticResource Br.BgDeep}"
     mc:Ignorable="d">
-
+    <UserControl.Resources>
+        <!--  Gives ContextMenu access to the page DataContext (outside visual tree)  -->
+        <FrameworkElement x:Key="VmProxy" DataContext="{Binding DataContext, Source={x:Reference RootControl}}" />
+    </UserControl.Resources>
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="44" />
@@ -269,6 +273,18 @@
                                 </StackPanel>
                             </HierarchicalDataTemplate>
                         </TreeView.ItemTemplate>
+
+                        <TreeView.ItemContainerStyle>
+                            <Style TargetType="TreeViewItem">
+                                <Setter Property="ContextMenu">
+                                    <Setter.Value>
+                                        <ContextMenu>
+                                            <MenuItem Command="{Binding Source={StaticResource VmProxy}, Path=DataContext.ExportNodeCommand}" Header="⬇ Export asset…" />
+                                        </ContextMenu>
+                                    </Setter.Value>
+                                </Setter>
+                            </Style>
+                        </TreeView.ItemContainerStyle>
                     </TreeView>
 
                 </Grid>
@@ -478,6 +494,75 @@
                                     Text="{Binding ModelPath}"
                                     TextWrapping="Wrap"
                                     ToolTip="{Binding ModelPath}" />
+                            </StackPanel>
+                        </Border>
+
+                        <!--  Section: Export  -->
+                        <TextBlock
+                            Margin="0,8,0,10"
+                            Style="{StaticResource SectionLabel}"
+                            Text="EXPORT" />
+
+                        <Border Padding="14,12" Style="{StaticResource Card}">
+                            <StackPanel>
+
+                                <!--  Layout  -->
+                                <TextBlock
+                                    Margin="0,0,0,4"
+                                    Style="{StaticResource SectionLabel}"
+                                    Text="Folder layout" />
+                                <ComboBox
+                                    Margin="0,0,0,10"
+                                    ItemsSource="{Binding Source={StaticResource ExportLayoutValues}}"
+                                    SelectedItem="{Binding ExportLayout, Mode=TwoWay}"
+                                    Style="{StaticResource DarkComboBox}"
+                                    ToolTip="How output files are arranged inside the chosen folder" />
+
+                                <!--  Conflict  -->
+                                <TextBlock
+                                    Margin="0,0,0,4"
+                                    Style="{StaticResource SectionLabel}"
+                                    Text="If file exists" />
+                                <ComboBox
+                                    Margin="0,0,0,10"
+                                    ItemsSource="{Binding Source={StaticResource ExportConflictValues}}"
+                                    SelectedItem="{Binding ExportConflictMode, Mode=TwoWay}"
+                                    Style="{StaticResource DarkComboBox}" />
+
+                                <!--  Include motions toggle  -->
+                                <CheckBox
+                                    Margin="0,0,0,12"
+                                    Content="Include motions"
+                                    Foreground="{StaticResource Br.TextPrimary}"
+                                    IsChecked="{Binding ExportMotions, Mode=TwoWay}" />
+
+                                <!--  Export / Cancel buttons  -->
+                                <Grid>
+                                    <Button
+                                        Padding="10,7"
+                                        HorizontalAlignment="Stretch"
+                                        Command="{Binding ExportNodeCommand}"
+                                        Content="⬇  Export asset…"
+                                        Style="{StaticResource PrimaryButton}"
+                                        Visibility="{Binding IsExporting, Converter={StaticResource InvBoolToVis}}" />
+                                    <Button
+                                        Padding="10,7"
+                                        HorizontalAlignment="Stretch"
+                                        Click="CancelExport_Click"
+                                        Content="✕  Cancel"
+                                        Style="{StaticResource GhostButton}"
+                                        Visibility="{Binding IsExporting, Converter={StaticResource BoolToVis}}" />
+                                </Grid>
+
+                                <!--  Status text  -->
+                                <TextBlock
+                                    Margin="0,8,0,0"
+                                    FontFamily="Consolas"
+                                    FontSize="10"
+                                    Foreground="{StaticResource Br.TextDim}"
+                                    Text="{Binding ExportStatus}"
+                                    TextWrapping="Wrap" />
+
                             </StackPanel>
                         </Border>
 
