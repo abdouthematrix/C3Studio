@@ -3,37 +3,45 @@ using C3Studio.Core.Services;
 using C3Studio.Models;
 using C3Studio.MonoGame;
 using Microsoft.Win32;
+using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
+using System.Linq;
+using System.Threading.Tasks;
 using System.Windows.Input;
 
 namespace C3Studio.ViewModels;
 
 public class WorkspaceViewModel : ViewModelBase
 {
-    private readonly IGameDataService  _gameData;
+    private readonly IGameDataService _gameData;
     private readonly IAssetFileService _assets;
-    private readonly ISettingsService   _settings;
+    private readonly ISettingsService _settings;
 
     private C3StudioGame? _game;
 
-    private string _modelPath     = string.Empty;
+    private string _modelPath = string.Empty;
     private string _texturePath = string.Empty;
     private string _motionPath = string.Empty;
     private string _statusMessage = "Ready.";
-    private bool   _isLoading;
-    private string _frameLabel    = "0 / 0";
-    private string _playPauseLabel= "⏸";
-    private float  _fps           = 30f;
+    private bool _isLoading;
+    private string _frameLabel = "0 / 0";
+    private string _playPauseLabel = "⏸";
+    private float _fps = 30f;
     private AssetNode? _selectedNode;
 
     public ObservableCollection<AssetNode> AssetTree { get; } = new();
+    public ObservableCollection<MotionData> AvailableMotions { get; } = new();
+
+    // ── Bindable properties ───────────────────────────────────────────────
 
     public string ModelPath
     {
         get => _modelPath;
         set => Set(ref _modelPath, value);
     }
+
     public string TexturePath
     {
         get => _texturePath;
@@ -45,26 +53,31 @@ public class WorkspaceViewModel : ViewModelBase
         get => _motionPath;
         set => Set(ref _motionPath, value);
     }
+
     public string StatusMessage
     {
         get => _statusMessage;
         private set => Set(ref _statusMessage, value);
     }
+
     public bool IsLoading
     {
         get => _isLoading;
         private set => Set(ref _isLoading, value);
     }
+
     public string FrameLabel
     {
         get => _frameLabel;
         private set => Set(ref _frameLabel, value);
     }
+
     public string PlayPauseLabel
     {
         get => _playPauseLabel;
         private set => Set(ref _playPauseLabel, value);
     }
+
     public float Fps
     {
         get => _fps;
@@ -78,19 +91,15 @@ public class WorkspaceViewModel : ViewModelBase
         {
             Set(ref _selectedNode, value);
 
-            // Repopulate motion list
             AvailableMotions.Clear();
             if (value?.AssetData?.Motions is { Length: > 0 } motions)
                 foreach (var m in motions)
                     AvailableMotions.Add(m);
 
             if (value?.IsLoadable == true)
-                LoadAssetNode(value);   // auto-selects first motion inside
+                LoadAssetNode(value);
         }
     }
-
-    // Add these two properties
-    public ObservableCollection<MotionData> AvailableMotions { get; } = new();
 
     private MotionData? _selectedMotion;
     public MotionData? SelectedMotion
@@ -99,50 +108,48 @@ public class WorkspaceViewModel : ViewModelBase
         set
         {
             if (Set(ref _selectedMotion, value) && value != null)
-                TryApplyMotion(value.Path);
+                ApplyMotionSilent(value.Path);
         }
     }
 
-    public ICommand BrowseFileCommand  { get; }
-    public ICommand LoadModelCommand   { get; }
+    // ── Commands ──────────────────────────────────────────────────────────
+
+    public ICommand BrowseFileCommand { get; }
+    public ICommand LoadModelCommand { get; }
     public ICommand ResetCameraCommand { get; }
-    public ICommand PlayPauseCommand   { get; }
-    public ICommand StepFwdCommand     { get; }
-    public ICommand StepBackCommand    { get; }
-    public ICommand SetFpsCommand      { get; }
+    public ICommand PlayPauseCommand { get; }
+    public ICommand StepFwdCommand { get; }
+    public ICommand StepBackCommand { get; }
+    public ICommand SetFpsCommand { get; }
     public ICommand BrowseTextureCommand { get; }
     public ICommand BrowseMotionCommand { get; }
     public ICommand ApplyMotionCommand { get; }
 
     public WorkspaceViewModel(IGameDataService gameData,
-                              IAssetFileService assets,
-                              ISettingsService settings)
+                               IAssetFileService assets,
+                               ISettingsService settings)
     {
         _gameData = gameData;
-        _assets   = assets;
+        _assets = assets;
         _settings = settings;
 
-        BrowseFileCommand  = Cmd(BrowseFile);
-        LoadModelCommand   = Cmd(LoadModel, () => !string.IsNullOrEmpty(ModelPath));
+        BrowseFileCommand = Cmd(BrowseFile);
+        LoadModelCommand = Cmd(LoadModel, () => !string.IsNullOrEmpty(ModelPath));
         ResetCameraCommand = Cmd(() => _game?.ResetCamera());
-        PlayPauseCommand   = Cmd(TogglePlay);
-        StepFwdCommand     = Cmd(() => _game?.StepFrame(1));
-        StepBackCommand    = Cmd(() => _game?.StepFrame(-1));
-        SetFpsCommand      = Cmd<string>(s => { if (float.TryParse(s, out float v)) Fps = v; });
-
+        PlayPauseCommand = Cmd(TogglePlay);
+        StepFwdCommand = Cmd(() => _game?.StepFrame(1));
+        StepBackCommand = Cmd(() => _game?.StepFrame(-1));
+        SetFpsCommand = Cmd<string>(s => { if (float.TryParse(s, out float v)) Fps = v; });
         BrowseTextureCommand = Cmd(BrowseTexture);
         BrowseMotionCommand = Cmd(BrowseMotion);
         ApplyMotionCommand = Cmd(ApplyMotion, () => !string.IsNullOrEmpty(MotionPath));
     }
 
-    /// <summary>
-    /// Called by NavigationService after navigating to the workspace.
-    /// Mirrors SetupViewModel.LoadAsync — initialises assets and loads game data,
-    /// then builds the asset tree. Safe to call even if SetupViewModel already ran it.
-    /// </summary>
+    // ── Initialisation ────────────────────────────────────────────────────
+
     public async Task LoadAsync()
     {
-        IsLoading     = true;
+        IsLoading = true;
         StatusMessage = "Loading game data…";
         try
         {
@@ -158,7 +165,6 @@ public class WorkspaceViewModel : ViewModelBase
         finally { IsLoading = false; }
     }
 
-    // ── Called by WorkspacePage code-behind once the game is ready ────────
     public void SetGame(C3StudioGame game)
     {
         _game = game;
@@ -166,7 +172,8 @@ public class WorkspaceViewModel : ViewModelBase
         _game.SetFps(_fps);
     }
 
-    // ── Tree ──────────────────────────────────────────────────────────────
+    // ── Asset tree construction ───────────────────────────────────────────
+
     private void BuildAssetTree()
     {
         AssetTree.Clear();
@@ -177,10 +184,8 @@ public class WorkspaceViewModel : ViewModelBase
     private AssetNode BuildNpcRoot()
     {
         var root = new AssetNode { Icon = "👤", Label = $"NPCs ({_gameData.Npcs.Count})" };
-
         foreach (var npc in _gameData.Npcs)
             root.Children.Add(BuildNpcNode(npc));
-
         return root;
     }
 
@@ -211,10 +216,8 @@ public class WorkspaceViewModel : ViewModelBase
     private AssetNode BuildSimpleObjRoot()
     {
         var root = new AssetNode { Icon = "🗿", Label = $"Simple Objects ({_gameData.SimpleObjs.Count})" };
-
         foreach (var obj in _gameData.SimpleObjs)
             root.Children.Add(BuildSimpleObjNode(obj));
-
         return root;
     }
 
@@ -226,11 +229,7 @@ public class WorkspaceViewModel : ViewModelBase
         {
             Icon = "📦",
             Label = $"[{obj.IdType}]",
-            AssetData = new AssetData
-            {
-                MeshPaths = meshPaths,
-                TexturePaths = texturePaths
-            }
+            AssetData = new AssetData { MeshPaths = meshPaths, TexturePaths = texturePaths }
         };
 
         for (int i = 0; i < obj.Parts; i++)
@@ -241,7 +240,7 @@ public class WorkspaceViewModel : ViewModelBase
             node.Children.Add(new AssetNode
             {
                 Icon = "🔷",
-                Label = $"Part {i} — {System.IO.Path.GetFileName(meshPaths[i])}",
+                Label = $"Part {i} — {Path.GetFileName(meshPaths[i])}",
                 AssetData = new AssetData
                 {
                     MeshPaths = [meshPaths[i]],
@@ -253,19 +252,127 @@ public class WorkspaceViewModel : ViewModelBase
         return node;
     }
 
-    // ── Helpers ──────────────────────────────────────────────────────────────────
+    // ── Asset loading ─────────────────────────────────────────────────────
+
+    private void LoadAssetNode(AssetNode node)
+    {
+        if (node.AssetData is not { } data || _game == null) return;
+
+        LoadParts(data);
+        SelectFirstMotion(data);
+    }
+
+    private void LoadParts(AssetData data)
+    {
+        if (data.MeshPaths.Length == 0) return;
+
+        // Build display labels
+        ModelPath = data.MeshPaths.Length == 1 ? data.MeshPaths[0] : $"{data.MeshPaths.Length} parts";
+        TexturePath = data.TexturePaths.Length == 1 ? data.TexturePaths[0] : string.Empty;
+
+        // Build (mesh, texture) pairs for the loader
+        var parts = data.MeshPaths
+            .Select((mesh, i) =>
+            {
+                // Manual texture override applies only to single-part loads
+                string? tex = i < data.TexturePaths.Length ? data.TexturePaths[i] : null;
+                if (data.MeshPaths.Length == 1 && !string.IsNullOrEmpty(TexturePath))
+                    tex = TexturePath;
+                return (MeshPath: mesh, TexturePath: tex);
+            })
+            .Where(p => !string.IsNullOrEmpty(p.MeshPath));
+
+        try
+        {
+            _game!.LoadC3Parts(parts, motionPath: null); // motion applied separately
+            StatusMessage = data.MeshPaths.Length == 1
+                ? $"Loaded: {Path.GetFileName(data.MeshPaths[0])}"
+                : $"Loaded {data.MeshPaths.Length} parts";
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Error: {ex.Message}";
+        }
+    }
+
+    private void SelectFirstMotion(AssetData data)
+    {
+        if (data.Motions.Length > 0)
+        {
+            _selectedMotion = data.Motions[0];
+            OnPropertyChanged(nameof(SelectedMotion));
+            ApplyMotionSilent(data.Motions[0].Path);
+        }
+        else
+        {
+            _selectedMotion = null;
+            OnPropertyChanged(nameof(SelectedMotion));
+        }
+    }
+
+    private void ApplyMotionSilent(string path)
+    {
+        if (_game == null || string.IsNullOrEmpty(path)) return;
+        try
+        {
+            _game.ChangeMotion(path);
+            MotionPath = path;
+            StatusMessage += $" · Motion: {Path.GetFileName(path)}";
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Motion error: {ex.Message}";
+        }
+    }
+
+    // ── Browse / manual load ──────────────────────────────────────────────
+
+    private void BrowseFile()
+    {
+        var dlg = new OpenFileDialog { Filter = "C3 files (*.c3)|*.c3|All files (*.*)|*.*" };
+        if (dlg.ShowDialog() == true) ModelPath = dlg.FileName;
+    }
+
+    private void LoadModel()
+    {
+        if (_game == null || string.IsNullOrEmpty(ModelPath)) return;
+        try
+        {
+            _game.LoadC3Asset(ModelPath,
+                texturePath: string.IsNullOrEmpty(TexturePath) ? null : TexturePath);
+            StatusMessage = $"Loaded: {Path.GetFileName(ModelPath)}";
+        }
+        catch (Exception ex) { StatusMessage = $"Error: {ex.Message}"; }
+    }
+
+    private void BrowseTexture()
+    {
+        var dlg = new OpenFileDialog
+        {
+            Filter = "Texture files (*.dds;*.tga;*.png;*.jpg)|*.dds;*.tga;*.png;*.jpg|All files (*.*)|*.*"
+        };
+        if (dlg.ShowDialog() == true) TexturePath = dlg.FileName;
+    }
+
+    private void BrowseMotion()
+    {
+        var dlg = new OpenFileDialog { Filter = "C3 motion files (*.c3)|*.c3|All files (*.*)|*.*" };
+        if (dlg.ShowDialog() == true) MotionPath = dlg.FileName;
+    }
+
+    private void ApplyMotion() => ApplyMotionSilent(MotionPath);
+
+    // ── Helpers ───────────────────────────────────────────────────────────
 
     private (string[] Paths, string[] Textures) BuildMeshArrays(C3DSimpleObjInfo obj)
     {
         var meshes = new string[obj.Parts];
         var textures = new string[obj.Parts];
-
         for (int i = 0; i < obj.Parts; i++)
         {
             meshes[i] = _gameData.ResolveMesh(obj.MeshIds[i]) ?? $"? ({obj.MeshIds[i]})";
             textures[i] = _gameData.ResolveTexture(obj.TextureIds[i]) ?? $"? ({obj.TextureIds[i]})";
         }
-
         return (meshes, textures);
     }
 
@@ -284,127 +391,17 @@ public class WorkspaceViewModel : ViewModelBase
         var path = _gameData.ResolveMotion(id);
         if (path != null)
             entries.Add(new MotionData(label, path));
-    }    
-    private void BrowseFile()
-    {
-        var dlg = new OpenFileDialog { Filter = "C3 files (*.c3)|*.c3|All files (*.*)|*.*" };
-        if (dlg.ShowDialog() == true) ModelPath = dlg.FileName;
-    }
-    private void LoadModel()
-    {
-        if (_game == null || string.IsNullOrEmpty(ModelPath)) return;
-        try
-        {
-            _game.LoadC3Asset(ModelPath,
-                texturePath: string.IsNullOrEmpty(TexturePath) ? null : TexturePath);
-            StatusMessage = $"Loaded: {Path.GetFileName(ModelPath)}";
-        }
-        catch (Exception ex)
-        {
-            StatusMessage = $"Error: {ex.Message}";
-        }
-    }
-    private void BrowseTexture()
-    {
-        var dlg = new OpenFileDialog
-        {
-            Filter = "Texture files (*.dds;*.tga;*.png;*.jpg)|*.dds;*.tga;*.png;*.jpg|All files (*.*)|*.*"
-        };
-        if (dlg.ShowDialog() == true) TexturePath = dlg.FileName;
-    }
-    private void BrowseMotion()
-    {
-        var dlg = new OpenFileDialog
-        {
-            Filter = "C3 motion files (*.c3)|*.c3|All files (*.*)|*.*"
-        };
-        if (dlg.ShowDialog() == true) MotionPath = dlg.FileName;
-    }
-    private void ApplyMotion()
-    {
-        if (_game == null || string.IsNullOrEmpty(MotionPath)) return;
-        TryApplyMotion(MotionPath);
-    }
-    private void LoadAssetNode(AssetNode node)
-    {
-        if (node.AssetData is not { } data || _game == null) return;
-
-        TryLoadParts(data);
-
-        if (data.Motions.Length > 0)
-        {
-            _selectedMotion = data.Motions[0];          // set backing field
-            OnPropertyChanged(nameof(SelectedMotion));   // no re-trigger
-            TryApplyMotion(data.Motions[0].Path);
-        }
-        else
-        {
-            _selectedMotion = null;
-            OnPropertyChanged(nameof(SelectedMotion));
-        }
     }
 
-    private void TryLoadParts(AssetData data)
-    {
-        if (data.MeshPaths.Length == 0) return;
-
-        // Update display fields
-        ModelPath = data.MeshPaths.Length == 1
-            ? data.MeshPaths[0]
-            : $"{data.MeshPaths.Length} parts";
-        TexturePath = data.TexturePaths.Length == 1
-            ? data.TexturePaths[0]
-            : string.Empty;
-
-        try
-        {
-            for (int i = 0; i < data.MeshPaths.Length; i++)
-            {
-                var mesh = data.MeshPaths[i];
-                var texture = i < data.TexturePaths.Length ? data.TexturePaths[i] : null;
-
-                // Manual texture override applies only to single-part loads
-                if (data.MeshPaths.Length == 1 && !string.IsNullOrEmpty(TexturePath))
-                    texture = TexturePath;
-
-                _game!.LoadC3Asset(mesh, texturePath: texture);
-            }
-
-            StatusMessage = data.MeshPaths.Length == 1
-                ? $"Loaded: {Path.GetFileName(data.MeshPaths[0])}"
-                : $"Loaded {data.MeshPaths.Length} parts";
-        }
-        catch (Exception ex)
-        {
-            StatusMessage = $"Error: {ex.Message}";
-        }
-    }
-
-    private void TryApplyMotion(string path)
-    {
-        if (_game == null || string.IsNullOrEmpty(path)) return;
-        try
-        {
-            _game.ChangeMotion(path);
-            MotionPath = path;
-            StatusMessage += $" · Motion: {Path.GetFileName(path)}";
-        }
-        catch (Exception ex)
-        {
-            StatusMessage = $"Motion error: {ex.Message}";
-        }
-    }
-   
     // ── Playback ──────────────────────────────────────────────────────────
+
     private void TogglePlay()
     {
         if (_game == null) return;
-        _game.IsPlaying   = !_game.IsPlaying;
-        PlayPauseLabel    = _game.IsPlaying ? "⏸" : "▶";
+        _game.IsPlaying = !_game.IsPlaying;
+        PlayPauseLabel = _game.IsPlaying ? "⏸" : "▶";
     }
 
-    private void OnFrameChanged(int current, int total)
-    {
+    private void OnFrameChanged(int current, int total) =>
         FrameLabel = $"{current} / {total}";
-    }
 }

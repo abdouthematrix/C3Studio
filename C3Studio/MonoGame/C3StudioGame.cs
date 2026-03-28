@@ -1,5 +1,6 @@
 using C3Studio.Core.Services;
 using C3Studio.Infrastructure.C3Format;
+using C3Studio.Infrastructure.Loading;
 using C3Studio.Infrastructure.Rendering;
 using C3Studio.Rendering;
 using Microsoft.Xna.Framework;
@@ -7,27 +8,37 @@ using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
 using MonoGame.Framework.WpfInterop;
 using MonoGame.Framework.WpfInterop.Input;
+using System;
+using System.Collections.Generic;
 using System.IO;
 
 namespace C3Studio.MonoGame;
 
 /// <summary>
 /// MonoGame WpfInterop game host.
-/// – Orbit / pan / zoom camera via <see cref="OrbitCamera"/>
-/// – Drives C3Renderer
-/// – Exposes IsPlaying, SetFps(), LoadC3(), StepFrame(), ResetCamera()
+/// Responsibilities: XNA lifecycle, camera input, grid rendering, playback control.
+/// Asset loading is fully delegated to <see cref="C3AssetLoader"/>.
 /// </summary>
 public class C3StudioGame : WpfGame
 {
-    // ── DI ────────────────────────────────────────────────────────────────
-    public IAssetFileService? AssetService { get; set; }
+    // ── World transform applied to every loaded model ─────────────────────
+    private static readonly Matrix WorldCorrection =
+        Matrix.CreateRotationX(MathHelper.ToRadians(90f)) *
+        Matrix.CreateRotationY(MathHelper.ToRadians(180f));
+
+    // ── DI / services ─────────────────────────────────────────────────────
+    private IAssetFileService? _assetService;
+    public IAssetFileService? AssetService
+    {
+        get => _assetService;
+        set { _assetService = value; _loader?.SetAssetService(value!); }
+    }
 
     // ── Events ────────────────────────────────────────────────────────────
     public event Action<int, int>? FrameChanged;
 
     // ── Playback ──────────────────────────────────────────────────────────
     public bool IsPlaying { get; set; } = true;
-
     public void SetFps(float fps) { if (_renderer != null) _renderer.Fps = fps; }
     public void StepFrame(int delta) => _renderer?.StepFrame(delta);
     public void ResetCamera() => _camera.Reset();
@@ -35,15 +46,12 @@ public class C3StudioGame : WpfGame
     // ── XNA services ──────────────────────────────────────────────────────
     private IGraphicsDeviceService? _gdService;
     private C3Renderer? _renderer;
+    private C3AssetLoader? _loader;
     private BasicEffect? _gridEffect;
     private WpfMouse? _mouse;
     private WpfKeyboard? _keyboard;
 
     // ── Camera ────────────────────────────────────────────────────────────
-    private static readonly Matrix WorldCorrection =
-        Matrix.CreateRotationX(MathHelper.ToRadians(90f)) *
-        Matrix.CreateRotationY(MathHelper.ToRadians(180f));
-
     private readonly OrbitCamera _camera = new();
     private MouseState _prevMouse;
 
@@ -56,14 +64,13 @@ public class C3StudioGame : WpfGame
         _gdService = new WpfGraphicsDeviceService(this);
         _mouse = new WpfMouse(this);
         _keyboard = new WpfKeyboard(this);
-
         base.Initialize();
     }
 
     protected override void LoadContent()
     {
         C3Texture.Initialize(GraphicsDevice);
-
+        _loader = new C3AssetLoader(GraphicsDevice, _assetService);
         _renderer = new C3Renderer(GraphicsDevice);
         _gridEffect = new BasicEffect(GraphicsDevice)
         {
@@ -71,11 +78,10 @@ public class C3StudioGame : WpfGame
             LightingEnabled = false,
             TextureEnabled = false,
         };
-
-        BuildGrid(20, 50f);
+        BuildGrid(halfSize: 20, step: 50f);
     }
 
-    // ── Update ────────────────────────────────────────────────────────────
+    // ── Update / Draw ─────────────────────────────────────────────────────
     protected override void Update(GameTime gameTime)
     {
         HandleCamera();
@@ -85,15 +91,14 @@ public class C3StudioGame : WpfGame
             if (IsPlaying) _renderer.Update(gameTime);
 
             int total = _renderer.Model?.MaxFrameCount ?? 0;
-            int cur = _renderer.Model?.Motions.Count > 0
-                        ? _renderer.Model.Motions[0].CurrentFrame : 0;
-            FrameChanged?.Invoke(cur, total);
+            int current = _renderer.Model?.Motions.Count > 0
+                            ? _renderer.Model.Motions[0].CurrentFrame : 0;
+            FrameChanged?.Invoke(current, total);
         }
 
         base.Update(gameTime);
     }
 
-    // ── Draw ──────────────────────────────────────────────────────────────
     protected override void Draw(GameTime gameTime)
     {
         GraphicsDevice.Clear(new Color(11, 11, 20));
@@ -110,6 +115,95 @@ public class C3StudioGame : WpfGame
         base.Draw(gameTime);
     }
 
+    // ── Public loading API ────────────────────────────────────────────────
+
+    /// <summary>
+    /// Loads a single C3 model (path is relative — resolved via AssetService / WDF).
+    /// Optionally overrides every PHY's texture with <paramref name="texturePath"/>.
+    /// </summary>
+    public void LoadC3Asset(string relativePath, string? texturePath = null)
+    {
+        if (_renderer == null || _loader == null) return;
+        try
+        {
+            var model = _loader.LoadModel(relativePath);
+            if (model == null) return;
+
+            // Texture: explicit override > same-dir auto-resolve
+            int texIdx = _loader.ResolveTextureForModel(relativePath, texturePath);
+            if (texIdx >= 0)
+            {
+                var tex = C3Texture.Get(texIdx)?.Texture;
+                foreach (var phy in model.Phys)
+                {
+                    phy.TexIndex = texIdx;
+                }
+                _renderer.LoadModelDirect(model, WorldCorrection);
+                if (tex != null) _renderer.OverrideTexture(tex);
+            }
+            else
+            {
+                _renderer.LoadModelDirect(model, WorldCorrection);
+            }
+
+            AutoFitCamera(model);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine(
+                $"[C3StudioGame] LoadC3Asset '{relativePath}': {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Loads and merges multiple (mesh, texture) pairs into one model.
+    /// Used for multi-part NPCs / SimpleObjs.
+    /// </summary>
+    public void LoadC3Parts(IEnumerable<(string MeshPath, string? TexturePath)> parts,
+                             string? motionPath = null)
+    {
+        if (_renderer == null || _loader == null) return;
+        try
+        {
+            var (model, partCount) = _loader.LoadAndMerge(parts);
+            if (model == null) return;
+
+            if (!string.IsNullOrEmpty(motionPath))
+                _loader.ApplyMotion(model, motionPath, WorldCorrection, partCount);
+
+            _renderer.LoadModelDirect(model, WorldCorrection);
+            AutoFitCamera(model);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine(
+                $"[C3StudioGame] LoadC3Parts: {ex.Message}");
+        }
+    }
+
+    /// <summary>Swaps the animation on the current model.</summary>
+    public void ChangeMotion(string relativePath)
+    {
+        if (_renderer == null || _loader == null) return;
+        try
+        {
+            if (_assetService != null)
+            {
+                using var stream = _assetService.Open(relativePath);
+                _renderer.ChangeMotion(stream, WorldCorrection);
+            }
+            else
+            {
+                _renderer.ChangeMotion(relativePath, WorldCorrection);
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine(
+                $"[C3StudioGame] ChangeMotion '{relativePath}': {ex.Message}");
+        }
+    }
+
     // ── Camera input ──────────────────────────────────────────────────────
     private void HandleCamera()
     {
@@ -117,31 +211,19 @@ public class C3StudioGame : WpfGame
         var kb = _keyboard!.GetState();
         int dz = ms.ScrollWheelValue - _prevMouse.ScrollWheelValue;
 
-        // Scroll zoom
-        if (dz != 0)
-            _camera.Zoom(dz * 0.01f);
-
-        // W/S keyboard zoom
+        if (dz != 0) _camera.Zoom(dz * 0.01f);
         if (kb.IsKeyDown(Keys.W)) _camera.Zoom(0.05f);
         if (kb.IsKeyDown(Keys.S)) _camera.Zoom(-0.05f);
-
-        bool leftHeld = ms.LeftButton == ButtonState.Pressed
-                      && _prevMouse.LeftButton == ButtonState.Pressed;
-        bool rightHeld = ms.RightButton == ButtonState.Pressed
-                      && _prevMouse.RightButton == ButtonState.Pressed;
-        bool midHeld = ms.MiddleButton == ButtonState.Pressed
-                      && _prevMouse.MiddleButton == ButtonState.Pressed;
 
         float dx = ms.X - _prevMouse.X;
         float dy = ms.Y - _prevMouse.Y;
 
-        // Left-drag → orbit
-        if (leftHeld)
-            _camera.Orbit(dx * 0.005f, dy * 0.005f);
+        bool leftHeld = ms.LeftButton == ButtonState.Pressed && _prevMouse.LeftButton == ButtonState.Pressed;
+        bool rightHeld = ms.RightButton == ButtonState.Pressed && _prevMouse.RightButton == ButtonState.Pressed;
+        bool midHeld = ms.MiddleButton == ButtonState.Pressed && _prevMouse.MiddleButton == ButtonState.Pressed;
 
-        // Right-drag or middle-drag → pan
-        if (rightHeld || midHeld)
-            _camera.Pan(dx, dy);
+        if (leftHeld) _camera.Orbit(dx * 0.005f, dy * 0.005f);
+        if (rightHeld || midHeld) _camera.Pan(dx, dy);
 
         _prevMouse = ms;
     }
@@ -182,109 +264,30 @@ public class C3StudioGame : WpfGame
         }
     }
 
-    // ── Public API ────────────────────────────────────────────────────────
-
-    /// <summary>
-    /// Load from a relative path via <see cref="IAssetFileService"/> (WDF-aware).
-    /// Falls back gracefully to treating the path as absolute if AssetService is not set.
-    /// </summary>
-    public void LoadC3Asset(string relativePath, string? texturePath = null)
-    {
-        if (_renderer == null) return;
-
-        try
-        {
-            if (AssetService != null)
-            {
-                using var stream = AssetService.Open(relativePath);
-                var model = C3Model.LoadFromStream(stream, gd: GraphicsDevice);
-                _renderer.LoadModelDirect(model, worldRotation: WorldCorrection);
-                _renderer.OverrideTexture(OverrideTexture(texturePath));
-                AutoFitCamera(model);
-            }           
-        }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Debug.WriteLine(
-                $"[C3StudioGame] LoadC3Asset '{relativePath}': {ex.Message}");
-        }
-    }
-    public Texture2D OverrideTexture(string relativePath)
-    {
-        if (_renderer == null) return null;
-        try
-        {
-            if (string.IsNullOrEmpty(relativePath)) return null;
-            int existing = C3Texture.FindByName(relativePath);           
-            if (AssetService != null)
-            {
-                using var stream = AssetService.Open(relativePath);
-                var ext = Path.GetExtension(relativePath).ToLowerInvariant();
-                using var br = new System.IO.BinaryReader(stream, System.Text.Encoding.ASCII, leaveOpen: false);
-                Texture2D tex = ext switch
-                {
-                    ".dds" => DDSLoader.Load(GraphicsDevice, br),
-                    ".tga" => TGALoader.Load(GraphicsDevice, br),
-                    _ => Texture2D.FromStream(GraphicsDevice, stream),
-                };
-                existing = C3Texture.InsertTexture(relativePath, tex);
-            }
-            if (existing != -1)
-                return C3Texture.Get(existing)?.Texture;
-        }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Debug.WriteLine(
-                $"[C3StudioGame] OverrideTexture '{relativePath}': {ex.Message}");           
-        }
-        return null;
-    }
-    public void ChangeMotion(string relativePath)
-    {
-        if (_renderer == null) return;
-        try
-        {
-            if (AssetService != null)
-            {
-                using var stream = AssetService.Open(relativePath);
-                _renderer.ChangeMotion(stream, WorldCorrection);
-            }
-            else
-            {
-                // Fallback: treat as absolute path (dev/debug only)
-                _renderer.ChangeMotion(relativePath, WorldCorrection);
-            }
-        }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Debug.WriteLine(
-                $"[C3StudioGame] ChangeMotion '{relativePath}': {ex.Message}");
-        }
-    }
-
     // ── Camera auto-fit ───────────────────────────────────────────────────
     private void AutoFitCamera(C3Model model)
     {
         if (model.Phys.Count == 0) { _camera.Reset(100f); return; }
 
-        Vector3 min = new(float.MaxValue), max = new(float.MinValue);
+        var min = new Vector3(float.MaxValue);
+        var max = new Vector3(float.MinValue);
+        bool anyBox = false;
+
         foreach (var phy in model.Phys)
         {
-            // Skip phys whose bounding boxes were never written (all-zero means no data)
             if (phy.BBoxMin == Vector3.Zero && phy.BBoxMax == Vector3.Zero) continue;
             min = Vector3.Min(min, phy.BBoxMin);
             max = Vector3.Max(max, phy.BBoxMax);
+            anyBox = true;
         }
 
-        // Fallback: bbox was never populated, use a reasonable default
-        if (min.X == float.MaxValue) { _camera.Reset(120f); return; }
+        if (!anyBox) { _camera.Reset(120f); return; }
 
-        var center = Vector3.Transform((min + max) * 0.5f, WorldCorrection);
-        var extent = Vector3.Distance(min, max) * 0.5f;
-        _camera.Target = center;
-        _camera.Radius = Math.Clamp(extent * 3f, 40f, 800f);
+        _camera.Target = Vector3.Transform((min + max) * 0.5f, WorldCorrection);
+        _camera.Radius = Math.Clamp(Vector3.Distance(min, max) * 1.5f, 40f, 800f);
     }
 
+    // ── Lifecycle ─────────────────────────────────────────────────────────
     protected override void UnloadContent()
     {
         _renderer?.Dispose();
