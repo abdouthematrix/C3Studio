@@ -59,30 +59,17 @@ public class C3Renderer : IDisposable
     private double _frameTimer;
     private double _secondsPerFrame = 1.0 / 30.0;
 
-    // ── Mesh visibility filter ────────────────────────────────────────────
-    // Null = render everything. Otherwise only phys whose Name is in the set are drawn.
-    private HashSet<string> _visibleMeshes = new();// new(["v_body"], StringComparer.OrdinalIgnoreCase);
+    // ── Equipment slot blacklist (mirrors C++ Draw/DrawAlpha skip-list) ───
+    // Note: _V_ARMET="v_head" and _V_HEAD="v_armet" are intentionally swapped,
+    // faithfully replicating the naming inconsistency in the original C++ constants.
+    private static readonly HashSet<string> EquipmentSlots = new(
+        ["v_head", "v_misc", "v_l_weapon", "v_r_weapon",
+         "v_l_shield", "v_r_shield", "v_l_shoe", "v_r_shoe",
+         "v_pet", "v_back", "v_armet",
+         "v_l_arm", "v_r_arm", "v_l_leg", "v_r_leg", "v_mantle"],
+        StringComparer.OrdinalIgnoreCase);
 
-    /// <summary>
-    /// Replaces the visible-mesh filter. Pass no arguments to render all meshes.
-    /// </summary>
-    public void SetVisibleMeshes(params string[] meshNames)
-    {
-        _visibleMeshes.Clear();
-        foreach (var n in meshNames) _visibleMeshes.Add(n);
-    }
-
-    /// <summary>Adds names to the current visible set.</summary>
-    public void AddVisibleMeshes(params string[] meshNames)
-    {
-        foreach (var n in meshNames) _visibleMeshes.Add(n);
-    }
-
-    /// <summary>Clears the filter — all meshes are rendered.</summary>
-    public void ClearVisibleMeshes() => _visibleMeshes.Clear();
-
-    private bool IsMeshVisible(C3Phy phy) =>
-        _visibleMeshes.Count == 0 || _visibleMeshes.Contains(phy.Name);
+    private bool IsMeshVisible(C3Phy phy) => !EquipmentSlots.Contains(phy.Name);
 
     // ─────────────────────────────────────────────────────────────────────
     public bool IsPlaying { get; set; } = true;
@@ -102,7 +89,7 @@ public class C3Renderer : IDisposable
         _alphaTestEffect = new AlphaTestEffect(gd)
         {
             AlphaFunction = CompareFunction.GreaterEqual,
-            ReferenceAlpha = 8,           
+            ReferenceAlpha = 8,
         };
     }
 
@@ -253,7 +240,7 @@ public class C3Renderer : IDisposable
         _alphaTestEffect.Projection = projection;
         _alphaTestEffect.World = World;
         _alphaTestEffect.VertexColorEnabled = true;
-        
+
         foreach (var rd in _phyData)
         {
             var phy = rd.Phy;
