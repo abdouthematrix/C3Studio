@@ -1,6 +1,6 @@
-using System.IO;
-using C3Studio.Infrastructure.Ini;
 using C3Studio.Core.Models;
+using C3Studio.Infrastructure.Ini;
+using System.IO;
 
 namespace C3Studio.Core.Services;
 
@@ -10,6 +10,7 @@ public interface IGameDataService
     IReadOnlyList<C3DSimpleObjInfo> SimpleObjs { get; }
     IReadOnlyList<C3DEffectInfo> Effects { get; }
     IReadOnlyList<ArmorTypeInfo> Armors { get; }
+    IReadOnlyList<ArmetTypeInfo> Armets { get; }
     IReadOnlyDictionary<ulong, string> MeshMap { get; }
     IReadOnlyDictionary<ulong, string> TextureMap { get; }
     IReadOnlyDictionary<ulong, string> MotionMap { get; }
@@ -23,6 +24,7 @@ public interface IGameDataService
     C3DEffectInfo? FindEffect(uint id);
     C3DEffectInfo? FindEffect(string key);
     ArmorTypeInfo? FindArmor(uint id);
+    ArmetTypeInfo? FindArmet(uint id);
 }
 
 public class GameDataService : IGameDataService
@@ -31,6 +33,7 @@ public class GameDataService : IGameDataService
     private List<C3DSimpleObjInfo> _simpleObjs = new();
     private List<C3DEffectInfo> _effects = new();
     private List<ArmorTypeInfo> _armors = new();
+    private List<ArmetTypeInfo> _armets = new();
     private Dictionary<ulong, string> _mesh = new();
     private Dictionary<ulong, string> _tex = new();
     private Dictionary<ulong, string> _motion = new();
@@ -40,6 +43,7 @@ public class GameDataService : IGameDataService
     public IReadOnlyList<C3DSimpleObjInfo> SimpleObjs => _simpleObjs;
     public IReadOnlyList<C3DEffectInfo> Effects => _effects;
     public IReadOnlyList<ArmorTypeInfo> Armors => _armors;
+    public IReadOnlyList<ArmetTypeInfo> Armets => _armets;
     public IReadOnlyDictionary<ulong, string> MeshMap => _mesh;
     public IReadOnlyDictionary<ulong, string> TextureMap => _tex;
     public IReadOnlyDictionary<ulong, string> MotionMap => _motion;
@@ -59,6 +63,7 @@ public class GameDataService : IGameDataService
         _simpleObjs = SimpleObjIniParser.Parse(Ini("3DSimpleObj.ini"));
         _effects = EffectIniParser.Parse(Ini("3DEffect.ini"));
         _armors = ArmorIniParser.Parse(Ini("Armor.ini"));
+        _armets = ArmetIniParser.Parse(Ini("Armet.ini"));
 
         _mesh = Cast(ResIniParser.Parse(Ini("3dobj.ini")));
         _tex = Cast(ResIniParser.Parse(Ini("3dtexture.ini")));
@@ -115,6 +120,12 @@ public class GameDataService : IGameDataService
     public ArmorTypeInfo? FindArmor(uint id)
     {
         foreach (var a in _armors) if (a.Id == id) return a;
+        return null;
+    }
+
+    public ArmetTypeInfo? FindArmet(uint id)
+    {
+        foreach (var a in _armets) if (a.Id == id) return a;
         return null;
     }
 }

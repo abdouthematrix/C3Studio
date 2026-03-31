@@ -5,6 +5,7 @@ using System.Collections.ObjectModel;
 using System.IO;
 using System.Windows.Forms;
 using System.Windows.Input;
+
 namespace C3Studio.ViewModels;
 
 public class WorkspaceViewModel : ViewModelBase
@@ -301,7 +302,7 @@ public class WorkspaceViewModel : ViewModelBase
             _assets.Initialize(_settings.ConquerPath);
             await _gameData.LoadAsync(_settings.ConquerPath);
             BuildAssetTree();
-            StatusMessage = $"Ready — {_gameData.Npcs.Count} NPCs, {_gameData.SimpleObjs.Count} objects, {_gameData.Effects.Count} effects, {_gameData.Armors.Count} armors.";
+            StatusMessage = $"Ready — {_gameData.Npcs.Count} NPCs, {_gameData.SimpleObjs.Count} objects, {_gameData.Effects.Count} effects, {_gameData.Armors.Count} armors, {_gameData.Armets.Count} armets.";
         }
         catch (Exception ex)
         {
@@ -326,6 +327,7 @@ public class WorkspaceViewModel : ViewModelBase
         AssetTree.Add(BuildSimpleObjRoot());
         AssetTree.Add(BuildEffectRoot());
         AssetTree.Add(BuildArmorRoot());
+        AssetTree.Add(BuildArmetRoot());
         RefreshFilter();
     }
 
@@ -511,6 +513,59 @@ public class WorkspaceViewModel : ViewModelBase
         {
             meshes[i] = _gameData.ResolveMesh(armor.MeshIds[i]) ?? $"? ({armor.MeshIds[i]})";
             textures[i] = _gameData.ResolveTexture(armor.TextureIds[i]) ?? $"? ({armor.TextureIds[i]})";
+        }
+        return (meshes, textures);
+    }
+
+    // ── Armet tree ────────────────────────────────────────────────────────
+
+    private AssetNode BuildArmetRoot()
+    {
+        var root = new AssetNode { Icon = "⛑", Label = $"Armets ({_gameData.Armets.Count})" };
+        foreach (var armet in _gameData.Armets)
+            root.Children.Add(BuildArmetNode(armet));
+        return root;
+    }
+
+    private AssetNode BuildArmetNode(ArmetTypeInfo armet)
+    {
+        var (meshPaths, texturePaths) = BuildMeshArraysForArmet(armet);
+
+        var node = new AssetNode
+        {
+            Icon = "⛑",
+            Label = $"[{armet.Id}]",
+            AssetData = new AssetData { MeshPaths = meshPaths, TexturePaths = texturePaths }
+        };
+
+        for (int i = 0; i < armet.Parts; i++)
+        {
+            if (string.IsNullOrEmpty(meshPaths[i]) || meshPaths[i].StartsWith('?'))
+                continue;
+
+            node.Children.Add(new AssetNode
+            {
+                Icon = "🔷",
+                Label = $"Part {i} — {Path.GetFileName(meshPaths[i])}",
+                AssetData = new AssetData
+                {
+                    MeshPaths = [meshPaths[i]],
+                    TexturePaths = [texturePaths[i]]
+                }
+            });
+        }
+
+        return node;
+    }
+
+    private (string[] Paths, string[] Textures) BuildMeshArraysForArmet(ArmetTypeInfo armet)
+    {
+        var meshes = new string[armet.Parts];
+        var textures = new string[armet.Parts];
+        for (int i = 0; i < armet.Parts; i++)
+        {
+            meshes[i] = _gameData.ResolveMesh(armet.MeshIds[i]) ?? $"? ({armet.MeshIds[i]})";
+            textures[i] = _gameData.ResolveTexture(armet.TextureIds[i]) ?? $"? ({armet.TextureIds[i]})";
         }
         return (meshes, textures);
     }
