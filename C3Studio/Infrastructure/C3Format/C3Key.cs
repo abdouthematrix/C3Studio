@@ -1,4 +1,3 @@
-using System.Collections.Generic;
 using System.IO;
 
 namespace C3Studio.Infrastructure.C3Format;

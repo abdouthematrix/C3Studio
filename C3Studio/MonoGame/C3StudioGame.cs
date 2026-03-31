@@ -8,9 +8,6 @@ using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
 using MonoGame.Framework.WpfInterop;
 using MonoGame.Framework.WpfInterop.Input;
-using System;
-using System.Collections.Generic;
-using System.IO;
 
 namespace C3Studio.MonoGame;
 

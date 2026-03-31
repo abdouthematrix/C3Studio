@@ -1,4 +1,4 @@
-namespace C3Studio.Models;
+namespace C3Studio.Core.Models;
 
 public class NpcTypeInfo
 {

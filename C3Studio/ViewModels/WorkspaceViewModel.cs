@@ -1,13 +1,8 @@
 using C3Studio.Core.Models;
 using C3Studio.Core.Services;
-using C3Studio.Models;
 using C3Studio.MonoGame;
-using System;
-using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
-using System.Linq;
-using System.Threading.Tasks;
 using System.Windows.Forms;
 using System.Windows.Input;
 namespace C3Studio.ViewModels;
@@ -306,7 +301,7 @@ public class WorkspaceViewModel : ViewModelBase
             _assets.Initialize(_settings.ConquerPath);
             await _gameData.LoadAsync(_settings.ConquerPath);
             BuildAssetTree();
-            StatusMessage = $"Ready — {_gameData.Npcs.Count} NPCs, {_gameData.SimpleObjs.Count} objects, {_gameData.Effects.Count} effects.";
+            StatusMessage = $"Ready — {_gameData.Npcs.Count} NPCs, {_gameData.SimpleObjs.Count} objects, {_gameData.Effects.Count} effects, {_gameData.Armors.Count} armors.";
         }
         catch (Exception ex)
         {
@@ -330,6 +325,7 @@ public class WorkspaceViewModel : ViewModelBase
         AssetTree.Add(BuildNpcRoot());
         AssetTree.Add(BuildSimpleObjRoot());
         AssetTree.Add(BuildEffectRoot());
+        AssetTree.Add(BuildArmorRoot());
         RefreshFilter();
     }
 
@@ -464,6 +460,59 @@ public class WorkspaceViewModel : ViewModelBase
         }
 
         return node;
+    }
+
+    // ── Armor tree ────────────────────────────────────────────────────────
+
+    private AssetNode BuildArmorRoot()
+    {
+        var root = new AssetNode { Icon = "🛡", Label = $"Armors ({_gameData.Armors.Count})" };
+        foreach (var armor in _gameData.Armors)
+            root.Children.Add(BuildArmorNode(armor));
+        return root;
+    }
+
+    private AssetNode BuildArmorNode(ArmorTypeInfo armor)
+    {
+        var (meshPaths, texturePaths) = BuildMeshArraysForArmor(armor);
+
+        var node = new AssetNode
+        {
+            Icon = "🛡",
+            Label = $"[{armor.Id}]",
+            AssetData = new AssetData { MeshPaths = meshPaths, TexturePaths = texturePaths }
+        };
+
+        for (int i = 0; i < armor.Parts; i++)
+        {
+            if (string.IsNullOrEmpty(meshPaths[i]) || meshPaths[i].StartsWith('?'))
+                continue;
+
+            node.Children.Add(new AssetNode
+            {
+                Icon = "🔷",
+                Label = $"Part {i} — {Path.GetFileName(meshPaths[i])}",
+                AssetData = new AssetData
+                {
+                    MeshPaths = [meshPaths[i]],
+                    TexturePaths = [texturePaths[i]]
+                }
+            });
+        }
+
+        return node;
+    }
+
+    private (string[] Paths, string[] Textures) BuildMeshArraysForArmor(ArmorTypeInfo armor)
+    {
+        var meshes = new string[armor.Parts];
+        var textures = new string[armor.Parts];
+        for (int i = 0; i < armor.Parts; i++)
+        {
+            meshes[i] = _gameData.ResolveMesh(armor.MeshIds[i]) ?? $"? ({armor.MeshIds[i]})";
+            textures[i] = _gameData.ResolveTexture(armor.TextureIds[i]) ?? $"? ({armor.TextureIds[i]})";
+        }
+        return (meshes, textures);
     }
 
     private void RefreshFilter()

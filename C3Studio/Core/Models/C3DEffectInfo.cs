@@ -1,4 +1,4 @@
-namespace C3Studio.Models;
+namespace C3Studio.Core.Models;
 
 /// <summary>
 /// One entry from <c>ini/3DEffect.ini</c>.
