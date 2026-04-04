@@ -309,7 +309,7 @@ public class WorkspaceViewModel : ViewModelBase
             _assets.Initialize(_settings.ConquerPath);
             await _gameData.LoadAsync(_settings.ConquerPath);
             BuildAssetTree();
-            StatusMessage = $"Ready — {_gameData.Npcs.Count} NPCs, {_gameData.SimpleObjs.Count} objects, {_gameData.Effects.Count} effects, {_gameData.Armors.Count} armors, {_gameData.Armets.Count} armets, {_gameData.Weapons.Count} weapons, {_gameData.Transforms.Count} transforms.";
+            StatusMessage = $"Ready — {_gameData.Npcs.Count} NPCs, {_gameData.SimpleObjs.Count} objects, {_gameData.Effects.Count} effects, {_gameData.Armors.Count} armors, {_gameData.Armets.Count} armets, {_gameData.Weapons.Count} weapons, {_gameData.Transforms.Count} transforms, {_gameData.Mounts.Count} mounts.";
         }
         catch (Exception ex)
         {
@@ -337,6 +337,7 @@ public class WorkspaceViewModel : ViewModelBase
         AssetTree.Add(BuildArmetRoot());
         AssetTree.Add(BuildWeaponRoot());
         AssetTree.Add(BuildTransformRoot());
+        AssetTree.Add(BuildMountRoot());
         RefreshFilter();
     }
 
@@ -663,6 +664,59 @@ public class WorkspaceViewModel : ViewModelBase
             Label = $"[{t.Index}]",
             AssetData = assetData,
         };
+    }
+
+    // ── Mount tree ────────────────────────────────────────────────────────
+
+    private AssetNode BuildMountRoot()
+    {
+        var root = new AssetNode { Icon = "🐴", Label = $"Mounts ({_gameData.Mounts.Count})" };
+        foreach (var mount in _gameData.Mounts)
+            root.Children.Add(BuildMountNode(mount));
+        return root;
+    }
+
+    private AssetNode BuildMountNode(MountTypeInfo mount)
+    {
+        var (meshPaths, texturePaths) = BuildMeshArraysForMount(mount);
+
+        var node = new AssetNode
+        {
+            Icon = "🐴",
+            Label = $"[{mount.Id}]",
+            AssetData = new AssetData { MeshPaths = meshPaths, TexturePaths = texturePaths }
+        };
+
+        for (int i = 0; i < mount.Parts; i++)
+        {
+            if (string.IsNullOrEmpty(meshPaths[i]) || meshPaths[i].StartsWith('?'))
+                continue;
+
+            node.Children.Add(new AssetNode
+            {
+                Icon = "🔷",
+                Label = $"Part {i} — {Path.GetFileName(meshPaths[i])}",
+                AssetData = new AssetData
+                {
+                    MeshPaths = [meshPaths[i]],
+                    TexturePaths = [texturePaths[i]]
+                }
+            });
+        }
+
+        return node;
+    }
+
+    private (string[] Paths, string[] Textures) BuildMeshArraysForMount(MountTypeInfo mount)
+    {
+        var meshes = new string[mount.Parts];
+        var textures = new string[mount.Parts];
+        for (int i = 0; i < mount.Parts; i++)
+        {
+            meshes[i] = _gameData.ResolveMesh(mount.MeshIds[i]) ?? $"? ({mount.MeshIds[i]})";
+            textures[i] = _gameData.ResolveTexture(mount.TextureIds[i]) ?? $"? ({mount.TextureIds[i]})";
+        }
+        return (meshes, textures);
     }
 
     private void RefreshFilter()

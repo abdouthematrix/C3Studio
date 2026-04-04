@@ -13,12 +13,13 @@ public interface IGameDataService
     IReadOnlyList<ArmetTypeInfo> Armets { get; }
     IReadOnlyList<WeaponTypeInfo> Weapons { get; }
     IReadOnlyList<TransformInfo> Transforms { get; }
-
+    IReadOnlyList<MountTypeInfo> Mounts { get; }
     IReadOnlyDictionary<ulong, string> MeshMap { get; }
     IReadOnlyDictionary<ulong, string> TextureMap { get; }
     IReadOnlyDictionary<ulong, string> MotionMap { get; }
     IReadOnlyDictionary<ulong, string> EffectObjMap { get; }
     IReadOnlyDictionary<ulong, string> WeaponMotionMap { get; }
+    IReadOnlyDictionary<ulong, string> MountMotionMap { get; }
 
     Task LoadAsync(string conquerPath);
 
@@ -31,6 +32,7 @@ public interface IGameDataService
     /// Replicates <c>C3DRole::GetWeaponMotion</c>: four-pass fallback lookup.
     /// </summary>
     string? ResolveWeaponMotion(ulong weaponId, int actionType);
+    string? ResolveMountMotion(ulong weaponId, int actionType);
 
     C3DSimpleObjInfo? FindSimpleObj(uint typeId);
     C3DEffectInfo? FindEffect(uint id);
@@ -50,11 +52,13 @@ public class GameDataService : IGameDataService
     private List<ArmetTypeInfo> _armets = new();
     private List<WeaponTypeInfo> _weapons = new();
     private List<TransformInfo> _transforms = new();
+    private List<MountTypeInfo> _mounts = new();
     private Dictionary<ulong, string> _mesh = new();
     private Dictionary<ulong, string> _tex = new();
     private Dictionary<ulong, string> _motion = new();
     private Dictionary<ulong, string> _effectObj = new();
     private Dictionary<ulong, string> _weaponMotion = new();
+    private Dictionary<ulong, string> _mountMotion = new();
 
     public IReadOnlyList<NpcTypeInfo> Npcs => _npcs;
     public IReadOnlyList<C3DSimpleObjInfo> SimpleObjs => _simpleObjs;
@@ -63,12 +67,14 @@ public class GameDataService : IGameDataService
     public IReadOnlyList<ArmetTypeInfo> Armets => _armets;
     public IReadOnlyList<WeaponTypeInfo> Weapons => _weapons;
     public IReadOnlyList<TransformInfo> Transforms => _transforms;
+    public IReadOnlyList<MountTypeInfo> Mounts => _mounts;
 
     public IReadOnlyDictionary<ulong, string> MeshMap => _mesh;
     public IReadOnlyDictionary<ulong, string> TextureMap => _tex;
     public IReadOnlyDictionary<ulong, string> MotionMap => _motion;
     public IReadOnlyDictionary<ulong, string> EffectObjMap => _effectObj;
     public IReadOnlyDictionary<ulong, string> WeaponMotionMap => _weaponMotion;
+    public IReadOnlyDictionary<ulong, string> MountMotionMap => _mountMotion;
 
     private string _loadedPath = string.Empty;
 
@@ -87,15 +93,14 @@ public class GameDataService : IGameDataService
         _armets = ArmetIniParser.Parse(Ini("Armet.ini"));
         _weapons = WeaponIniParser.Parse(Ini("Weapon.ini"));
         _transforms = AdditiveIniParser.Parse(Ini("AdditiveSize.ini"));
+        _mounts = MountIniParser.Parse(Ini("Mount.ini"));
 
         _mesh = Cast(ResIniParser.Parse(Ini("3dobj.ini")));
         _tex = Cast(ResIniParser.Parse(Ini("3dtexture.ini")));
         _motion = Cast(ResIniParser.Parse(Ini("3dmotion.ini")));
-        _effectObj = Cast(ResIniParser.Parse(Ini("3DEffectObj.ini")));
-        // WeaponMotion.ini shares the same id=filepath format.
-        // IDs such as 5000009990310 exceed uint32 — ResIniParser already uses ulong.
+        _effectObj = Cast(ResIniParser.Parse(Ini("3DEffectObj.ini")));      
         _weaponMotion = Cast(ResIniParser.Parse(Ini("WeaponMotion.ini")));
-
+        _mountMotion = Cast(ResIniParser.Parse(Ini("MountMotion.ini")));
         _loadedPath = conquerPath;
     });
 
@@ -156,6 +161,29 @@ public class GameDataService : IGameDataService
         // Pass 4 — category weapon + generic action
         key = categoryId * 1000 + 999;
         if (WeaponMotionMap.TryGetValue(key, out var p4)) return p4;
+
+        return null;
+    }
+    public string? ResolveMountMotion(ulong MountId, int actionType)
+    {
+        MountId = (MountId / 10) * 10;
+
+        // Pass 1 — exact Mount + exact action
+        ulong key = MountId * 1000 + (ulong)actionType;
+        if (MountMotionMap.TryGetValue(key, out var p1)) return p1;
+
+        // Pass 2 — exact Mount + generic action (999)
+        key = MountId * 1000 + 999;
+        if (MountMotionMap.TryGetValue(key, out var p2)) return p2;
+
+        // Pass 3 — category Mount (e.g. 410000 → 410999) + exact action
+        ulong categoryId = (MountId / 1000) * 1000 + 999;
+        key = categoryId * 1000 + (ulong)actionType;
+        if (MountMotionMap.TryGetValue(key, out var p3)) return p3;
+
+        // Pass 4 — category Mount + generic action
+        key = categoryId * 1000 + 999;
+        if (MountMotionMap.TryGetValue(key, out var p4)) return p4;
 
         return null;
     }
