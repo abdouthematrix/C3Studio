@@ -309,7 +309,7 @@ public class WorkspaceViewModel : ViewModelBase
             _assets.Initialize(_settings.ConquerPath);
             await _gameData.LoadAsync(_settings.ConquerPath);
             BuildAssetTree();
-            StatusMessage = $"Ready — {_gameData.Npcs.Count} NPCs, {_gameData.SimpleObjs.Count} objects, {_gameData.Effects.Count} effects, {_gameData.Armors.Count} armors, {_gameData.Armets.Count} armets.";
+            StatusMessage = $"Ready — {_gameData.Npcs.Count} NPCs, {_gameData.SimpleObjs.Count} objects, {_gameData.Effects.Count} effects, {_gameData.Armors.Count} armors, {_gameData.Armets.Count} armets, {_gameData.Weapons.Count} weapons.";
         }
         catch (Exception ex)
         {
@@ -335,6 +335,7 @@ public class WorkspaceViewModel : ViewModelBase
         AssetTree.Add(BuildEffectRoot());
         AssetTree.Add(BuildArmorRoot());
         AssetTree.Add(BuildArmetRoot());
+        AssetTree.Add(BuildWeaponRoot());
         RefreshFilter();
     }
 
@@ -573,6 +574,59 @@ public class WorkspaceViewModel : ViewModelBase
         {
             meshes[i] = _gameData.ResolveMesh(armet.MeshIds[i]) ?? $"? ({armet.MeshIds[i]})";
             textures[i] = _gameData.ResolveTexture(armet.TextureIds[i]) ?? $"? ({armet.TextureIds[i]})";
+        }
+        return (meshes, textures);
+    }
+
+    // ── Weapon tree ───────────────────────────────────────────────────────
+
+    private AssetNode BuildWeaponRoot()
+    {
+        var root = new AssetNode { Icon = "⚔", Label = $"Weapons ({_gameData.Weapons.Count})" };
+        foreach (var weapon in _gameData.Weapons)
+            root.Children.Add(BuildWeaponNode(weapon));
+        return root;
+    }
+
+    private AssetNode BuildWeaponNode(WeaponTypeInfo weapon)
+    {
+        var (meshPaths, texturePaths) = BuildMeshArraysForWeapon(weapon);
+
+        var node = new AssetNode
+        {
+            Icon = "⚔",
+            Label = $"[{weapon.Id}]",
+            AssetData = new AssetData { MeshPaths = meshPaths, TexturePaths = texturePaths }
+        };
+
+        for (int i = 0; i < weapon.Parts; i++)
+        {
+            if (string.IsNullOrEmpty(meshPaths[i]) || meshPaths[i].StartsWith('?'))
+                continue;
+
+            node.Children.Add(new AssetNode
+            {
+                Icon = "🔷",
+                Label = $"Part {i} — {Path.GetFileName(meshPaths[i])}",
+                AssetData = new AssetData
+                {
+                    MeshPaths = [meshPaths[i]],
+                    TexturePaths = [texturePaths[i]]
+                }
+            });
+        }
+
+        return node;
+    }
+
+    private (string[] Paths, string[] Textures) BuildMeshArraysForWeapon(WeaponTypeInfo weapon)
+    {
+        var meshes = new string[weapon.Parts];
+        var textures = new string[weapon.Parts];
+        for (int i = 0; i < weapon.Parts; i++)
+        {
+            meshes[i] = _gameData.ResolveMesh(weapon.MeshIds[i]) ?? $"? ({weapon.MeshIds[i]})";
+            textures[i] = _gameData.ResolveTexture(weapon.TextureIds[i]) ?? $"? ({weapon.TextureIds[i]})";
         }
         return (meshes, textures);
     }
