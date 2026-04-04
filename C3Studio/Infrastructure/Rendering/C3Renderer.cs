@@ -217,28 +217,44 @@ public class C3Renderer : IDisposable
     {
         if (_phyData.Count == 0) return;
         _gd.DepthStencilState = DepthStencilState.Default;
-        _effect.View = view; _effect.Projection = projection; _effect.World = World;
-        _effect.VertexColorEnabled = true; _effect.LightingEnabled = false;
 
-        // Opaque pass
+        // ── Shared state for both effects ──────────────────────────────────
+        _alphaTestEffect.View = view;
+        _alphaTestEffect.Projection = projection;
+        _alphaTestEffect.World = World;
+        _alphaTestEffect.VertexColorEnabled = true;
+
+        _effect.View = view;
+        _effect.Projection = projection;
+        _effect.World = World;
+        _effect.VertexColorEnabled = true;
+        _effect.LightingEnabled = false;
+
+        // ── Opaque pass ────────────────────────────────────────────────────
+        // Use AlphaTestEffect (not BasicEffect) so texture-transparent pixels
+        // (DXT1 1-bit alpha, cutout areas) are discarded via the alpha test
+        // instead of being rendered as solid geometry.
         _gd.BlendState = BlendState.Opaque;
         foreach (var rd in _phyData)
         {
             var phy = rd.Phy;
             if (!phy.Draw || phy.NormalTriCount == 0 || !phy.IsFullyOpaque || rd.VertexBuffer == null) continue;
             if (!IsMeshVisible(phy)) continue;
-            _gd.RasterizerState = phy.TwoSided ? RasterizerState.CullNone : RasterizerState.CullCounterClockwise;
-            SetPhyEffect(rd);
-            _gd.SetVertexBuffer(rd.VertexBuffer); _gd.Indices = rd.IndexBuffer;
-            foreach (var pass in _effect.CurrentTechnique.Passes)
-            { pass.Apply(); _gd.DrawIndexedPrimitives(PrimitiveType.TriangleList, 0, 0, phy.NormalTriCount); }
+            _gd.RasterizerState = phy.TwoSided
+                ? RasterizerState.CullNone
+                : RasterizerState.CullCounterClockwise;
+            SetPhyAlphaEffect(rd);                          // <── was SetPhyEffect / BasicEffect
+            _gd.SetVertexBuffer(rd.VertexBuffer);
+            _gd.Indices = rd.IndexBuffer;
+            foreach (var pass in _alphaTestEffect.CurrentTechnique.Passes)
+            {
+                pass.Apply();
+                _gd.DrawIndexedPrimitives(PrimitiveType.TriangleList, 0, 0, phy.NormalTriCount);
+            }
         }
 
-        _alphaTestEffect.View = view;
-        _alphaTestEffect.Projection = projection;
-        _alphaTestEffect.World = World;
-        _alphaTestEffect.VertexColorEnabled = true;
-
+        // ── Alpha / semi-transparent pass ─────────────────────────────────
+        // Unchanged — handles: material-alpha normal tris + all alpha tris
         foreach (var rd in _phyData)
         {
             var phy = rd.Phy;
@@ -249,7 +265,8 @@ public class C3Renderer : IDisposable
             if (!tn && !at) continue;
             _gd.BlendState = ResolveBlendState(phy.BlendAsb, phy.BlendAdb);
             SetPhyAlphaEffect(rd);
-            _gd.SetVertexBuffer(rd.VertexBuffer); _gd.Indices = rd.IndexBuffer;
+            _gd.SetVertexBuffer(rd.VertexBuffer);
+            _gd.Indices = rd.IndexBuffer;
             foreach (var pass in _alphaTestEffect.CurrentTechnique.Passes)
             {
                 pass.Apply();
