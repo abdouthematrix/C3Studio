@@ -47,7 +47,16 @@ public sealed class OrbitCamera
     public void Zoom(float delta) =>
         _radius = Math.Clamp(_radius - delta * _radius * 0.1f, MinRadius, MaxRadius);
 
-    public void Reset(float modelRadius = 100f)
+    /// <summary>Snap to a clean front view, no angle drift from previous model.</summary>
+    public void FitTo(Vector3 center, float orbit)
+    {
+        _yaw = MathHelper.Pi;  // face -Z (same as constructor)
+        _pitch = -0.35f;         // slight downward tilt
+        _target = center;
+        _radius = Math.Clamp(orbit, MinRadius, MaxRadius);
+    }
+
+    public void Reset(float modelRadius = 200f)
     {
         _yaw = MathHelper.Pi;
         _pitch = -0.35f;

@@ -98,7 +98,7 @@ public class C3StudioGame : WpfGame
 
     protected override void Draw(GameTime gameTime)
     {
-        GraphicsDevice.Clear(new Color(11, 11, 20));
+        GraphicsDevice.Clear(Color.Gray);
 
         float aspect = (float)Math.Max(1, GraphicsDevice.Viewport.Width)
                              / Math.Max(1, GraphicsDevice.Viewport.Height);
@@ -264,24 +264,30 @@ public class C3StudioGame : WpfGame
     // ── Camera auto-fit ───────────────────────────────────────────────────
     private void AutoFitCamera(C3Model model)
     {
-        if (model.Phys.Count == 0) { _camera.Reset(100f); return; }
-
+        // OutputVertices are already in world space after LoadModelDirect calls Calculate()
+        // This bypasses all BBox transform uncertainty entirely
         var min = new Vector3(float.MaxValue);
         var max = new Vector3(float.MinValue);
-        bool anyBox = false;
+        bool any = false;
 
         foreach (var phy in model.Phys)
         {
-            if (phy.BBoxMin == Vector3.Zero && phy.BBoxMax == Vector3.Zero) continue;
-            min = Vector3.Min(min, phy.BBoxMin);
-            max = Vector3.Max(max, phy.BBoxMax);
-            anyBox = true;
+            if (phy.OutputVertices.Count == 0) continue;
+            foreach (var v in phy.OutputVertices)
+            {
+                min = Vector3.Min(min, v.Position);
+                max = Vector3.Max(max, v.Position);
+                any = true;
+            }            
         }
 
-        if (!anyBox) { _camera.Reset(120f); return; }
+        if (!any) { _camera.Reset(); return; }
 
-        _camera.Target = Vector3.Transform((min + max) * 0.5f, WorldCorrection);
-        _camera.Radius = Math.Clamp(Vector3.Distance(min, max) * 1.5f, 40f, 800f);
+        var center = (min + max) * 0.5f;
+        float diagonal = Vector3.Distance(min, max);
+        float orbit = Math.Clamp(diagonal * 1.5f, 40f, 800f);
+
+        _camera.FitTo(center, orbit);
     }
 
     // ── Lifecycle ─────────────────────────────────────────────────────────
