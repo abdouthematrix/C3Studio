@@ -123,8 +123,27 @@
                             Content="▶  Apply"
                             Style="{StaticResource GhostButton}" />
 
+                        <!--  Spacer pushes the button to the far right  -->
+                        <StackPanel
+                            Margin="16,0,0,0"
+                            HorizontalAlignment="Right"
+                            VerticalAlignment="Center"
+                            Orientation="Horizontal">
+                            <Rectangle
+                                Width="1"
+                                Height="20"
+                                Margin="0,0,16,0"
+                                Fill="{StaticResource Br.Border}" />
+                            <Button
+                                Padding="10,5"
+                                Command="{Binding GoToSetupCommand}"
+                                Content="⚙  Setup"
+                                Style="{StaticResource GhostButton}"
+                                ToolTip="Change game path and settings" />
+                        </StackPanel>
                     </StackPanel>
                 </Border>
+
             </StackPanel>
         </Border>
 

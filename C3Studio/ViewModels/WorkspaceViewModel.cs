@@ -13,6 +13,7 @@ public class WorkspaceViewModel : ViewModelBase
     private readonly IGameDataService _gameData;
     private readonly IAssetFileService _assets;
     private readonly ISettingsService _settings;
+    private readonly INavigationService _nav;
 
     private C3StudioGame? _game;
 
@@ -212,12 +213,14 @@ public class WorkspaceViewModel : ViewModelBase
     public WorkspaceViewModel(IGameDataService gameData,
                                IAssetFileService assets,
                                IAssetExportService exportService,
-                               ISettingsService settings)
+                               ISettingsService settings,
+                               INavigationService nav)
     {
         _gameData = gameData;
         _assets = assets;
         _settings = settings;
         _exportService = exportService;
+        _nav = nav;
         BrowseFileCommand = Cmd(BrowseFile);
         LoadModelCommand = Cmd(LoadModel, () => _modelPaths.Count > 0);
         ResetCameraCommand = Cmd(() => _game?.ResetCamera());
@@ -230,7 +233,11 @@ public class WorkspaceViewModel : ViewModelBase
         ApplyMotionCommand = Cmd(ApplyMotion, () => !string.IsNullOrEmpty(MotionPath));
         ClearSearchCommand = Cmd(() => SearchText = string.Empty);
         ExportNodeCommand = Cmd(ExportNode, () => CanExport());
+        GoToSetupCommand = Cmd(() => _nav.GoToSetup());
     }
+
+    public ICommand GoToSetupCommand { get; }
+
 
     private async void ExportNode()
     {
