@@ -12,6 +12,7 @@ public interface IGameDataService
     IReadOnlyList<ArmorTypeInfo> Armors { get; }
     IReadOnlyList<ArmetTypeInfo> Armets { get; }
     IReadOnlyList<WeaponTypeInfo> Weapons { get; }
+    IReadOnlyList<TransformInfo> Transforms { get; }
 
     IReadOnlyDictionary<ulong, string> MeshMap { get; }
     IReadOnlyDictionary<ulong, string> TextureMap { get; }
@@ -37,6 +38,7 @@ public interface IGameDataService
     ArmorTypeInfo? FindArmor(uint id);
     ArmetTypeInfo? FindArmet(uint id);
     WeaponTypeInfo? FindWeapon(uint id);
+    TransformInfo? FindTransform(int index);
 }
 
 public class GameDataService : IGameDataService
@@ -47,6 +49,7 @@ public class GameDataService : IGameDataService
     private List<ArmorTypeInfo> _armors = new();
     private List<ArmetTypeInfo> _armets = new();
     private List<WeaponTypeInfo> _weapons = new();
+    private List<TransformInfo> _transforms = new();
     private Dictionary<ulong, string> _mesh = new();
     private Dictionary<ulong, string> _tex = new();
     private Dictionary<ulong, string> _motion = new();
@@ -59,6 +62,7 @@ public class GameDataService : IGameDataService
     public IReadOnlyList<ArmorTypeInfo> Armors => _armors;
     public IReadOnlyList<ArmetTypeInfo> Armets => _armets;
     public IReadOnlyList<WeaponTypeInfo> Weapons => _weapons;
+    public IReadOnlyList<TransformInfo> Transforms => _transforms;
 
     public IReadOnlyDictionary<ulong, string> MeshMap => _mesh;
     public IReadOnlyDictionary<ulong, string> TextureMap => _tex;
@@ -82,6 +86,7 @@ public class GameDataService : IGameDataService
         _armors = ArmorIniParser.Parse(Ini("Armor.ini"));
         _armets = ArmetIniParser.Parse(Ini("Armet.ini"));
         _weapons = WeaponIniParser.Parse(Ini("Weapon.ini"));
+        _transforms = AdditiveIniParser.Parse(Ini("AdditiveSize.ini"));
 
         _mesh = Cast(ResIniParser.Parse(Ini("3dobj.ini")));
         _tex = Cast(ResIniParser.Parse(Ini("3dtexture.ini")));
@@ -191,6 +196,12 @@ public class GameDataService : IGameDataService
     public WeaponTypeInfo? FindWeapon(uint id)
     {
         foreach (var w in Weapons) if (w.Id == id) return w;
+        return null;
+    }
+
+    public TransformInfo? FindTransform(int index)
+    {
+        foreach (var t in Transforms) if (t.Index == index) return t;
         return null;
     }
 }

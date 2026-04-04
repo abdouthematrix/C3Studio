@@ -309,7 +309,7 @@ public class WorkspaceViewModel : ViewModelBase
             _assets.Initialize(_settings.ConquerPath);
             await _gameData.LoadAsync(_settings.ConquerPath);
             BuildAssetTree();
-            StatusMessage = $"Ready — {_gameData.Npcs.Count} NPCs, {_gameData.SimpleObjs.Count} objects, {_gameData.Effects.Count} effects, {_gameData.Armors.Count} armors, {_gameData.Armets.Count} armets, {_gameData.Weapons.Count} weapons.";
+            StatusMessage = $"Ready — {_gameData.Npcs.Count} NPCs, {_gameData.SimpleObjs.Count} objects, {_gameData.Effects.Count} effects, {_gameData.Armors.Count} armors, {_gameData.Armets.Count} armets, {_gameData.Weapons.Count} weapons, {_gameData.Transforms.Count} transforms.";
         }
         catch (Exception ex)
         {
@@ -336,6 +336,7 @@ public class WorkspaceViewModel : ViewModelBase
         AssetTree.Add(BuildArmorRoot());
         AssetTree.Add(BuildArmetRoot());
         AssetTree.Add(BuildWeaponRoot());
+        AssetTree.Add(BuildTransformRoot());
         RefreshFilter();
     }
 
@@ -629,6 +630,39 @@ public class WorkspaceViewModel : ViewModelBase
             textures[i] = _gameData.ResolveTexture(weapon.TextureIds[i]) ?? $"? ({weapon.TextureIds[i]})";
         }
         return (meshes, textures);
+    }
+
+    // ── Transform tree ────────────────────────────────────────────────────
+
+    private AssetNode BuildTransformRoot()
+    {
+        var root = new AssetNode { Icon = "🔀", Label = $"Transforms ({_gameData.Transforms.Count})" };
+        foreach (var t in _gameData.Transforms)
+            root.Children.Add(BuildTransformNode(t));
+        return root;
+    }
+
+    private AssetNode BuildTransformNode(TransformInfo t)
+    {       
+        // Look maps to an armor: armorId = Look * 1_000_000.
+        // Look 0, 98, 99 are special no-armor values (mirrors C3DRole::Transform / SetLook).
+        AssetData? assetData = null;
+
+        var armor = _gameData.FindArmor((uint)(t.Look * 1_000_000));
+        if (armor != null)
+        {
+            var (meshPaths, texturePaths) = BuildMeshArraysForArmor(armor);
+            if (meshPaths.Length > 0)
+                assetData = new AssetData { MeshPaths = meshPaths, TexturePaths = texturePaths };
+        }
+
+
+        return new AssetNode
+        {
+            Icon = "🔀",
+            Label = $"[{t.Index}]",
+            AssetData = assetData,
+        };
     }
 
     private void RefreshFilter()
