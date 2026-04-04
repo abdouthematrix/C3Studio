@@ -92,7 +92,15 @@ public class GameDataService : IGameDataService
         _armors = ArmorIniParser.Parse(Ini("Armor.ini"));
         _armets = ArmetIniParser.Parse(Ini("Armet.ini"));
         _weapons = WeaponIniParser.Parse(Ini("Weapon.ini"));
-        _transforms = AdditiveIniParser.Parse(Ini("AdditiveSize.ini"));
+
+        var transformById = new Dictionary<int, TransformInfo>();
+        foreach (var t in AdditiveIniParser.Parse(Ini("AdditiveSize.ini")))
+            transformById[t.Index] = t;
+        foreach (var t in TransFormIniParser.Parse(Ini("TransForm.ini")))
+            transformById[t.Index] = t;
+        _transforms = transformById.Values
+                                  //.OrderBy(t => t.Index)
+                                  .ToList();
         _mounts = MountIniParser.Parse(Ini("Mount.ini"));
 
         _mesh = Cast(ResIniParser.Parse(Ini("3dobj.ini")));

@@ -29,7 +29,7 @@ public class SetupViewModel : ViewModelBase
         "3dobj.ini", "3dtexture.ini", "3dmotion.ini", "3DEffectObj.ini",
         "3DsimpleRole.ini", "MountMotion.ini", "WeaponMotion.ini",
         "armor.ini", "armet.ini", "weapon.ini", "Mount.ini",
-        "AdditiveSize.ini",
+        "AdditiveSize.ini","TransForm.ini",
     ];
 
     public string ConquerPath
