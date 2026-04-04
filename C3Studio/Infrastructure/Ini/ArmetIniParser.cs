@@ -4,13 +4,20 @@ using System.IO;
 namespace C3Studio.Infrastructure.Ini;
 
 /// <summary>
-/// Parses <c>ini/Armet.ini</c>.
-/// <para>
-/// Section headers are bare numeric IDs: <c>[1000000]</c>.
-/// Per-slot keys are zero-indexed suffixes: <c>Mesh0</c>, <c>Texture0</c>,
-/// <c>Asb0</c>, <c>Adb0</c>. Unknown keys (<c>MixTex0</c>, <c>MixOpt0</c>,
-/// <c>Material0</c>) are silently skipped.
-/// </para>
+/// Parses <c>ini/Armet.ini</c>. Two section-header formats coexist in the wild:
+/// <list type="bullet">
+///   <item>
+///     <b>Old format</b> — used by <c>C3DRoleData::CreateRolePartInfo</c>:<br/>
+///     <c>[Armor002000000]</c> with bare <c>Mesh=</c> / <c>Texture=</c> keys.
+///     Implicitly single-part (<c>Parts = 1</c>).
+///   </item>
+///   <item>
+///     <b>New format</b> — bare numeric header:<br/>
+///     <c>[1000000]</c> with <c>Part=</c>, <c>Mesh0=</c>, <c>Texture0=</c>,
+///     <c>Asb0=</c>, <c>Adb0=</c> per-slot keys.
+///   </item>
+/// </list>
+/// Both are parsed into the same <see cref="ArmetTypeInfo"/> model.
 /// </summary>
 public static class ArmetIniParser
 {
@@ -27,16 +34,25 @@ public static class ArmetIniParser
             if (string.IsNullOrEmpty(line) || line.StartsWith("//"))
                 continue;
 
-            // ── Section header [numericId] ─────────────────────────────────
+            // -- Section header --------------------------------------------
             if (line.StartsWith('[') && line.EndsWith(']'))
             {
                 Commit(result, current);
+                current = null;
 
                 var inner = line[1..^1].Trim();
-                if (uint.TryParse(inner, out uint id))
-                    current = new ArmetTypeInfo { Id = id };
-                else
-                    current = null;
+
+                // Old format: [Armor002000000]
+                if (inner.StartsWith("Armet", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (uint.TryParse(inner["Armet".Length..], out uint oldId))
+                        current = new ArmetTypeInfo { Id = oldId, Parts = 1 };
+                }
+                // New format: [1000000]
+                else if (uint.TryParse(inner, out uint newId))
+                {
+                    current = new ArmetTypeInfo { Id = newId };
+                }
 
                 continue;
             }
@@ -49,7 +65,21 @@ public static class ArmetIniParser
             var key = line[..eq].Trim();
             var val = line[(eq + 1)..].Trim();
 
-            // ── Scalar ─────────────────────────────────────────────────────
+            // -- Old-format bare keys (single-part) ------------------------
+            if (key.Equals("Mesh", StringComparison.OrdinalIgnoreCase)
+                && !char.IsDigit(key[^1]))
+            {
+                if (uint.TryParse(val, out uint v)) current.MeshIds[0] = v;
+                continue;
+            }
+            if (key.Equals("Texture", StringComparison.OrdinalIgnoreCase)
+                && !char.IsDigit(key[^1]))
+            {
+                if (uint.TryParse(val, out uint v)) current.TextureIds[0] = v;
+                continue;
+            }
+
+            // -- New-format scalar -----------------------------------------
             if (key == "Part")
             {
                 if (int.TryParse(val, out int p))
@@ -57,35 +87,25 @@ public static class ArmetIniParser
                 continue;
             }
 
-            // ── Per-slot: Mesh0, Texture0, Asb0, Adb0 ─────────────────────
+            // -- New-format per-slot: Mesh0, Texture0, Asb0, Adb0 ---------
             if (key.StartsWith("Mesh", StringComparison.OrdinalIgnoreCase)
                 && TrySlot(key, "Mesh", out int mi))
-            {
-                if (uint.TryParse(val, out uint v)) current.MeshIds[mi] = v;
-            }
+            { if (uint.TryParse(val, out uint v)) current.MeshIds[mi] = v; }
             else if (key.StartsWith("Texture", StringComparison.OrdinalIgnoreCase)
                      && TrySlot(key, "Texture", out int ti))
-            {
-                if (uint.TryParse(val, out uint v)) current.TextureIds[ti] = v;
-            }
+            { if (uint.TryParse(val, out uint v)) current.TextureIds[ti] = v; }
             else if (key.StartsWith("Asb", StringComparison.OrdinalIgnoreCase)
                      && TrySlot(key, "Asb", out int ai))
-            {
-                if (int.TryParse(val, out int v)) current.Asb[ai] = v;
-            }
+            { if (int.TryParse(val, out int v)) current.Asb[ai] = v; }
             else if (key.StartsWith("Adb", StringComparison.OrdinalIgnoreCase)
                      && TrySlot(key, "Adb", out int di))
-            {
-                if (int.TryParse(val, out int v)) current.Adb[di] = v;
-            }
-            // MixTex, MixOpt, Material → ignored (rendering not affected)
+            { if (int.TryParse(val, out int v)) current.Adb[di] = v; }
+            // MixTex, MixOpt, Material, Texture2, MoveRateX/Y -> ignored
         }
 
         Commit(result, current);
         return result;
     }
-
-    // ── Helpers ───────────────────────────────────────────────────────────
 
     private static void Commit(List<ArmetTypeInfo> list, ArmetTypeInfo? info)
     {
@@ -96,7 +116,8 @@ public static class ArmetIniParser
     {
         index = -1;
         var suffix = key[prefix.Length..];
-        return int.TryParse(suffix, out index)
+        return suffix.Length > 0
+            && int.TryParse(suffix, out index)
             && (uint)index < ArmetTypeInfo.MaxParts;
     }
 }
