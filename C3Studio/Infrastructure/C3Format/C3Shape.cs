@@ -46,6 +46,10 @@ public struct ShapeOutVertex
 /// <summary>Animated ribbon/blade trail (SHAP chunk). Ring-buffer of interpolated quad segments.</summary>
 public class C3Shape : IDisposable
 {
+    public int PartIndex = -1;
+    // D3D blend factors: 5=SrcAlpha, 6=InvSrcAlpha (standard AlphaBlend)
+    public int BlendAsb { get; set; } = 5;
+    public int BlendAdb { get; set; } = 6;
     public string   Name     { get; set; } = string.Empty;
     public string   TexName  { get; set; } = string.Empty;
     public int      TexIndex { get; set; } = -1;
@@ -113,7 +117,7 @@ public class C3Shape : IDisposable
         _lastA=vecA; _lastB=vecB;
     }
 
-    public void Draw(GraphicsDevice gd, BasicEffect effect,
+    public void Draw(GraphicsDevice gd, AlphaTestEffect effect,
                      Matrix view, Matrix projection, bool bLocal=false)
     {
         if (_vb==null||_segCount==0) return;
@@ -124,8 +128,10 @@ public class C3Shape : IDisposable
         gd.SamplerStates[0]=SamplerState.LinearWrap;
         effect.View=view; effect.Projection=projection;
         effect.World=bLocal?(Motion?.LocalMatrix??Matrix.Identity):Matrix.Identity;
-        effect.TextureEnabled=tex!=null; effect.Texture=tex;
-        effect.VertexColorEnabled=true; effect.LightingEnabled=false;
+       // effect.TextureEnabled=tex!=null;
+        effect.Texture=tex;
+        effect.VertexColorEnabled=true;
+        //effect.LightingEnabled=false;
         int total=_segCount*6;
         var gpu=new VertexPositionColorTexture[total];
         for (int i=0;i<total;i++)

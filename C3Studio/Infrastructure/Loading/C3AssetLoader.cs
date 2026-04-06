@@ -54,8 +54,9 @@ public sealed class C3AssetLoader
         C3Model.LoadFromStream(stream, _gd);
 
     /// <summary>
-    /// Loads multiple (mesh, texture) pairs and merges them into one C3Model.
+    /// Loads multiple (mesh, texture, asb, adb) tuples and merges them into one C3Model.
     /// The first valid part becomes the base; remaining parts are appended.
+    /// D3D blend factors from each tuple are stamped onto all PHYs belonging to that part.
     /// Returns (null, 0) if no parts could be loaded.
     /// <para>
     /// The returned <c>PartCount</c> must be passed to
@@ -64,24 +65,63 @@ public sealed class C3AssetLoader
     /// </para>
     /// </summary>
     public (C3Model? Model, int PartCount) LoadAndMerge(
-        IEnumerable<(string MeshPath, string? TexturePath)> parts)
+        IEnumerable<(string MeshPath, string? TexturePath, int Asb, int Adb)> parts)
     {
         C3Model? merged = null;
         int partCount = 0;
 
-        foreach (var (meshPath, texturePath) in parts)
+        foreach (var (meshPath, texturePath, asb, adb) in parts)
         {
             var part = LoadModel(meshPath);
             if (part == null) continue;
+
+            // Default D3D blend values: 5 = SrcAlpha, 6 = InvSrcAlpha
+            int effectiveAsb = asb > 0 ? asb : 5;
+            int effectiveAdb = adb > 0 ? adb : 6;
 
             if (!string.IsNullOrEmpty(texturePath))
             {
                 int texIdx = LoadTexture(texturePath);
                 if (texIdx >= 0)
+                {
                     foreach (var phy in part.Phys)
                         phy.TexIndex = texIdx;
+                    foreach (var phy in part.Shapes)
+                        phy.TexIndex = texIdx;
+                    foreach (var phy in part.Ptcls)
+                        phy.TexIndex = texIdx;
+                    foreach (var phy in part.Scenes)
+                        phy.TexIndex = texIdx;
+                }
             }
 
+            // Stamp the part's blend factors onto every PHY it owns.
+            foreach (var phy in part.Phys)
+            {
+                phy.BlendAsb = effectiveAsb;
+                phy.BlendAdb = effectiveAdb;
+                phy.PartIndex = partCount;
+            }
+            foreach (var phy in part.Shapes)
+            {
+                phy.BlendAsb = effectiveAsb;
+                phy.BlendAdb = effectiveAdb;
+                phy.PartIndex = partCount;
+            }
+            foreach (var phy in part.Ptcls)
+            {
+                phy.BlendAsb = effectiveAsb;
+                phy.BlendAdb = effectiveAdb;
+                phy.PartIndex = partCount;
+            }
+            foreach (var phy in part.Scenes)
+            {
+                phy.BlendAsb = effectiveAsb;
+                phy.BlendAdb = effectiveAdb;
+                phy.PartIndex = partCount;
+            }
+            foreach (var mot in part.Motions)
+                mot.PartIndex = partCount;
             if (merged == null)
             {
                 merged = part;
@@ -89,6 +129,9 @@ public sealed class C3AssetLoader
             else
             {
                 foreach (var phy in part.Phys) merged.Phys.Add(phy);
+                foreach (var phy in part.Shapes) merged.Shapes.Add(phy);
+                foreach (var phy in part.Ptcls) merged.Ptcls.Add(phy);
+                foreach (var phy in part.Scenes) merged.Scenes.Add(phy);
                 foreach (var mot in part.Motions) merged.Motions.Add(mot);
             }
 
@@ -97,6 +140,14 @@ public sealed class C3AssetLoader
 
         return (merged, partCount);
     }
+
+    /// <summary>
+    /// Convenience overload for callers that have no per-part blend info.
+    /// All parts receive the default blend (5/6 = standard alpha blend).
+    /// </summary>
+    public (C3Model? Model, int PartCount) LoadAndMerge(
+        IEnumerable<(string MeshPath, string? TexturePath)> parts) =>
+        LoadAndMerge(parts.Select(p => (p.MeshPath, p.TexturePath, 5, 6)));
 
     // ── Texture ───────────────────────────────────────────────────────────
 
@@ -152,7 +203,7 @@ public sealed class C3AssetLoader
         foreach (var ext in TextureExtensions)
         {
             var candidate = Path.Combine(dir, baseName + ext)
-                               .Replace('\\', '/'); // normalise for WDF keys
+                               .Replace('\\', '/');
             int idx = LoadTexture(candidate);
             if (idx >= 0) return idx;
         }

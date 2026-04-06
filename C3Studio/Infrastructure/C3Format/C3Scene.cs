@@ -27,6 +27,10 @@ public struct SceneVertex
 /// </summary>
 public class C3Scene : IDisposable
 {
+    public int PartIndex = -1;
+    // D3D blend factors: 5=SrcAlpha, 6=InvSrcAlpha (standard AlphaBlend)
+    public int BlendAsb { get; set; } = 5;
+    public int BlendAdb { get; set; } = 6;
     public string  Name         { get; set; } = string.Empty;
     public string  TexName      { get; set; } = string.Empty;
     public string? LightTexName { get; set; }
@@ -93,7 +97,7 @@ public class C3Scene : IDisposable
     public void NextFrame(int step=1)
     { if(Frames!=null&&Frames.Length>0) CurrentFrame=(CurrentFrame+step)%Frames.Length; }
 
-    public void Draw(GraphicsDevice gd, BasicEffect effect, Matrix view, Matrix projection)
+    public void Draw(GraphicsDevice gd, AlphaTestEffect effect, Matrix view, Matrix projection)
     {
         if (_vb == null || Indices == null) return;
         Matrix frameMatrix = (Frames != null && Frames.Length > 0) ? Frames[CurrentFrame] : Matrix.Identity;
@@ -104,8 +108,10 @@ public class C3Scene : IDisposable
         gd.BlendState        = hasAlpha ? BlendState.AlphaBlend : BlendState.Opaque;
         gd.SamplerStates[0]  = SamplerState.LinearWrap;
         effect.View=view; effect.Projection=projection; effect.World=world;
-        effect.TextureEnabled=_tex!=null; effect.Texture=_tex;
-        effect.LightingEnabled=false; effect.VertexColorEnabled=false;
+       // effect.TextureEnabled=_tex!=null; 
+        effect.Texture=_tex;
+      //  effect.LightingEnabled=false;
+        effect.VertexColorEnabled=false;
         gd.SetVertexBuffer(_vb); gd.Indices=_ib;
         foreach (var pass in effect.CurrentTechnique.Passes)
         { pass.Apply(); gd.DrawIndexedPrimitives(PrimitiveType.TriangleList,0,0,Indices.Length/3); }

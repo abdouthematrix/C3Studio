@@ -36,6 +36,7 @@ public class PhyOutVertex
 /// </summary>
 public class C3Phy
 {
+    public int PartIndex = -1;
     public string Name     { get; set; } = string.Empty;
     public string TexName  { get; set; } = string.Empty;
     public int    TexIndex { get; set; } = -1;

@@ -18,10 +18,6 @@ public class WorkspaceViewModel : ViewModelBase
     private C3StudioGame? _game;
 
     // ── Multi-file backing list ───────────────────────────────────────────
-    /// <summary>
-    /// Holds all paths selected via BrowseFile (multi-select).
-    /// ModelPath is a display-only summary derived from this list.
-    /// </summary>
     private List<string> _modelPaths = new();
 
     private string _modelPath = string.Empty;
@@ -38,12 +34,23 @@ public class WorkspaceViewModel : ViewModelBase
     public ObservableCollection<MotionData> AvailableMotions { get; } = new();
 
     // ── Bindable properties ───────────────────────────────────────────────
+    private int _asb = 5;
 
-    /// <summary>
-    /// Bound to the ModelPath textbox. When the user types a path directly,
-    /// _modelPaths is updated so LoadModel() picks it up without requiring a Browse.
-    /// Shows "N files selected" (read-only summary) after a multi-file Browse.
-    /// </summary>
+    public int Asb
+    {
+        get => _asb;
+        set => Set(ref _asb, value);
+    }
+
+    private int _adb = 6;
+
+    public int Adb
+    {
+        get => _adb;
+        set => Set(ref _adb, value);
+    }
+
+
     public string ModelPath
     {
         get => _modelPath;
@@ -51,10 +58,6 @@ public class WorkspaceViewModel : ViewModelBase
         {
             if (!Set(ref _modelPath, value)) return;
 
-            // Keep _modelPaths in sync with whatever the user typed.
-            // If the box is empty, clear the list so the Load button disables.
-            // If it contains a real path (not our own "N files selected" summary),
-            // treat it as a single manually-entered file.
             if (string.IsNullOrWhiteSpace(value))
             {
                 _modelPaths = new List<string>();
@@ -63,10 +66,8 @@ public class WorkspaceViewModel : ViewModelBase
             {
                 var path = value.Trim();
                 _modelPaths = new List<string> { path };
-                // Auto-detect texture for the manually entered path.
                 TexturePath = FindTexture(path);
             }
-            // "N files selected" → leave _modelPaths as-is (multi-browse result).
         }
     }
 
@@ -180,11 +181,7 @@ public class WorkspaceViewModel : ViewModelBase
     public bool IsExporting
     {
         get => _isExporting;
-        private set
-        {
-            _isExporting = value;
-            OnPropertyChanged();
-        }
+        private set { _isExporting = value; OnPropertyChanged(); }
     }
 
     private bool _exportMotions = true;
@@ -207,7 +204,8 @@ public class WorkspaceViewModel : ViewModelBase
         get => _exportLayout;
         set { _exportLayout = value; OnPropertyChanged(); }
     }
-    public ICommand ExportNodeCommand { get; } // assigned in ctor
+
+    public ICommand ExportNodeCommand { get; }
     private bool CanExport() => SelectedNode?.IsLoadable == true && !IsExporting;
 
     public WorkspaceViewModel(IGameDataService gameData,
@@ -237,7 +235,6 @@ public class WorkspaceViewModel : ViewModelBase
     }
 
     public ICommand GoToSetupCommand { get; }
-
 
     private async void ExportNode()
     {
@@ -289,7 +286,6 @@ public class WorkspaceViewModel : ViewModelBase
         }
     }
 
-    /// <summary>Cancels an in-progress export (bind to a Cancel button).</summary>
     public void CancelExport() => _exportCts?.Cancel();
 
     private static void ShowExportErrors(ExportResult result)
@@ -298,6 +294,7 @@ public class WorkspaceViewModel : ViewModelBase
         MessageBox.Show(msg, "Export — some files failed",
             MessageBoxButtons.OK, MessageBoxIcon.Warning);
     }
+
     // ── Initialisation ────────────────────────────────────────────────────
 
     public async Task LoadAsync()
@@ -309,7 +306,10 @@ public class WorkspaceViewModel : ViewModelBase
             _assets.Initialize(_settings.ConquerPath);
             await _gameData.LoadAsync(_settings.ConquerPath);
             BuildAssetTree();
-            StatusMessage = $"Ready — {_gameData.Npcs.Count} NPCs, {_gameData.SimpleObjs.Count} objects, {_gameData.Effects.Count} effects, {_gameData.Armors.Count} armors, {_gameData.Armets.Count} armets, {_gameData.Weapons.Count} weapons, {_gameData.Transforms.Count} transforms, {_gameData.Mounts.Count} mounts.";
+            StatusMessage = $"Ready — {_gameData.Npcs.Count} NPCs, {_gameData.SimpleObjs.Count} objects, " +
+                            $"{_gameData.Effects.Count} effects, {_gameData.Armors.Count} armors, " +
+                            $"{_gameData.Armets.Count} armets, {_gameData.Weapons.Count} weapons, " +
+                            $"{_gameData.Transforms.Count} transforms, {_gameData.Mounts.Count} mounts.";
         }
         catch (Exception ex)
         {
@@ -341,6 +341,8 @@ public class WorkspaceViewModel : ViewModelBase
         RefreshFilter();
     }
 
+    // ── NPC tree ──────────────────────────────────────────────────────────
+
     private AssetNode BuildNpcRoot()
     {
         var root = new AssetNode { Icon = "👤", Label = $"NPCs ({_gameData.Npcs.Count})" };
@@ -356,16 +358,26 @@ public class WorkspaceViewModel : ViewModelBase
         var obj = _gameData.FindSimpleObj(npc.SimpleObjId);
         var motions = BuildMotionEntries(npc);
 
-        var (objMeshes, objTextures) = obj != null
-            ? BuildMeshArrays(obj)
-            : ([], []);
+        // SimpleObj parts: use the NPC's scalar Asb/Adb for all slots.
+        string[] objMeshes = [], objTextures = [];
+        int[] objAsb = [], objAdb = [];
+        if (obj != null)
+        {
+            (objMeshes, objTextures, objAsb, objAdb) = BuildMeshArrays(obj, npc.Asb, npc.Adb);
+        }
 
-        var (efxMeshes, efxTextures) = !string.IsNullOrEmpty(npc.Effect)
-            ? BuildEffectParts(npc.Effect)
-            : ([], []);
+        // Effect parts: each slot carries its own per-slot Asb/Adb.
+        string[] efxMeshes = [], efxTextures = [];
+        int[] efxAsb = [], efxAdb = [];
+        if (!string.IsNullOrEmpty(npc.Effect))
+        {
+            (efxMeshes, efxTextures, efxAsb, efxAdb) = BuildEffectParts(npc.Effect);
+        }
 
         var allMeshes = objMeshes.Concat(efxMeshes).ToArray();
         var allTextures = objTextures.Concat(efxTextures).ToArray();
+        var allAsb = objAsb.Concat(efxAsb).ToArray();
+        var allAdb = objAdb.Concat(efxAdb).ToArray();
 
         if (allMeshes.Length > 0 || motions.Length > 0)
         {
@@ -373,12 +385,16 @@ public class WorkspaceViewModel : ViewModelBase
             {
                 MeshPaths = allMeshes,
                 TexturePaths = allTextures,
-                Motions = motions
+                Motions = motions,
+                Asb = allAsb,
+                Adb = allAdb,
             };
         }
 
         return node;
     }
+
+    // ── SimpleObj tree ────────────────────────────────────────────────────
 
     private AssetNode BuildSimpleObjRoot()
     {
@@ -390,13 +406,20 @@ public class WorkspaceViewModel : ViewModelBase
 
     private AssetNode BuildSimpleObjNode(C3DSimpleObjInfo obj)
     {
-        var (meshPaths, texturePaths) = BuildMeshArrays(obj);
+        // SimpleObj has no Asb/Adb — use defaults (5/6).
+        var (meshPaths, texturePaths, asb, adb) = BuildMeshArrays(obj);
 
         var node = new AssetNode
         {
             Icon = "📦",
             Label = $"[{obj.IdType}]",
-            AssetData = new AssetData { MeshPaths = meshPaths, TexturePaths = texturePaths }
+            AssetData = new AssetData
+            {
+                MeshPaths = meshPaths,
+                TexturePaths = texturePaths,
+                Asb = asb,
+                Adb = adb,
+            }
         };
 
         for (int i = 0; i < obj.Parts; i++)
@@ -411,13 +434,17 @@ public class WorkspaceViewModel : ViewModelBase
                 AssetData = new AssetData
                 {
                     MeshPaths = [meshPaths[i]],
-                    TexturePaths = [texturePaths[i]]
+                    TexturePaths = [texturePaths[i]],
+                    Asb = [asb[i]],
+                    Adb = [adb[i]],
                 }
             });
         }
 
         return node;
     }
+
+    // ── Effect tree ───────────────────────────────────────────────────────
 
     private AssetNode BuildEffectRoot()
     {
@@ -433,28 +460,36 @@ public class WorkspaceViewModel : ViewModelBase
             ? $"[{effect.Key}]  Lev {effect.Lev}"
             : $"[{effect.Key}]";
 
-        // Resolve all slots up front
         var meshPaths = new string[effect.Amount];
         var texPaths = new string[effect.Amount];
+        var asbArr = new int[effect.Amount];
+        var adbArr = new int[effect.Amount];
+
         for (int i = 0; i < effect.Amount; i++)
         {
             meshPaths[i] = _gameData.ResolveEffectObj(effect.EffectIds[i])
                            ?? $"? ({effect.EffectIds[i]})";
             texPaths[i] = _gameData.ResolveTexture((ulong)effect.TextureIds[i])
                            ?? $"? ({effect.TextureIds[i]})";
+            asbArr[i] = effect.Asb[i];
+            adbArr[i] = effect.Adb[i];
         }
 
-        // Parent node loads all slots merged (same pattern as SimpleObj)
         var node = new AssetNode
         {
             Icon = "✨",
             Label = label,
             AssetData = effect.Amount > 0
-                ? new AssetData { MeshPaths = meshPaths, TexturePaths = texPaths }
+                ? new AssetData
+                {
+                    MeshPaths = meshPaths,
+                    TexturePaths = texPaths,
+                    Asb = asbArr,
+                    Adb = adbArr,
+                }
                 : null
         };
 
-        // Per-slot children for individual loading
         for (int i = 0; i < effect.Amount; i++)
         {
             if (meshPaths[i].StartsWith('?')) continue;
@@ -466,7 +501,9 @@ public class WorkspaceViewModel : ViewModelBase
                 AssetData = new AssetData
                 {
                     MeshPaths = [meshPaths[i]],
-                    TexturePaths = [texPaths[i]]
+                    TexturePaths = [texPaths[i]],
+                    Asb = [asbArr[i]],
+                    Adb = [adbArr[i]],
                 }
             });
         }
@@ -486,13 +523,19 @@ public class WorkspaceViewModel : ViewModelBase
 
     private AssetNode BuildArmorNode(ArmorTypeInfo armor)
     {
-        var (meshPaths, texturePaths) = BuildMeshArraysForArmor(armor);
+        var (meshPaths, texturePaths, asb, adb) = BuildMeshArraysForArmor(armor);
 
         var node = new AssetNode
         {
             Icon = "🛡",
             Label = $"[{armor.Id}]",
-            AssetData = new AssetData { MeshPaths = meshPaths, TexturePaths = texturePaths }
+            AssetData = new AssetData
+            {
+                MeshPaths = meshPaths,
+                TexturePaths = texturePaths,
+                Asb = asb,
+                Adb = adb,
+            }
         };
 
         for (int i = 0; i < armor.Parts; i++)
@@ -507,24 +550,14 @@ public class WorkspaceViewModel : ViewModelBase
                 AssetData = new AssetData
                 {
                     MeshPaths = [meshPaths[i]],
-                    TexturePaths = [texturePaths[i]]
+                    TexturePaths = [texturePaths[i]],
+                    Asb = [asb[i]],
+                    Adb = [adb[i]],
                 }
             });
         }
 
         return node;
-    }
-
-    private (string[] Paths, string[] Textures) BuildMeshArraysForArmor(ArmorTypeInfo armor)
-    {
-        var meshes = new string[armor.Parts];
-        var textures = new string[armor.Parts];
-        for (int i = 0; i < armor.Parts; i++)
-        {
-            meshes[i] = _gameData.ResolveMesh(armor.MeshIds[i]) ?? $"? ({armor.MeshIds[i]})";
-            textures[i] = _gameData.ResolveTexture(armor.TextureIds[i]) ?? $"? ({armor.TextureIds[i]})";
-        }
-        return (meshes, textures);
     }
 
     // ── Armet tree ────────────────────────────────────────────────────────
@@ -539,13 +572,19 @@ public class WorkspaceViewModel : ViewModelBase
 
     private AssetNode BuildArmetNode(ArmetTypeInfo armet)
     {
-        var (meshPaths, texturePaths) = BuildMeshArraysForArmet(armet);
+        var (meshPaths, texturePaths, asb, adb) = BuildMeshArraysForArmet(armet);
 
         var node = new AssetNode
         {
             Icon = "⛑",
             Label = $"[{armet.Id}]",
-            AssetData = new AssetData { MeshPaths = meshPaths, TexturePaths = texturePaths }
+            AssetData = new AssetData
+            {
+                MeshPaths = meshPaths,
+                TexturePaths = texturePaths,
+                Asb = asb,
+                Adb = adb,
+            }
         };
 
         for (int i = 0; i < armet.Parts; i++)
@@ -560,24 +599,14 @@ public class WorkspaceViewModel : ViewModelBase
                 AssetData = new AssetData
                 {
                     MeshPaths = [meshPaths[i]],
-                    TexturePaths = [texturePaths[i]]
+                    TexturePaths = [texturePaths[i]],
+                    Asb = [asb[i]],
+                    Adb = [adb[i]],
                 }
             });
         }
 
         return node;
-    }
-
-    private (string[] Paths, string[] Textures) BuildMeshArraysForArmet(ArmetTypeInfo armet)
-    {
-        var meshes = new string[armet.Parts];
-        var textures = new string[armet.Parts];
-        for (int i = 0; i < armet.Parts; i++)
-        {
-            meshes[i] = _gameData.ResolveMesh(armet.MeshIds[i]) ?? $"? ({armet.MeshIds[i]})";
-            textures[i] = _gameData.ResolveTexture(armet.TextureIds[i]) ?? $"? ({armet.TextureIds[i]})";
-        }
-        return (meshes, textures);
     }
 
     // ── Weapon tree ───────────────────────────────────────────────────────
@@ -592,13 +621,19 @@ public class WorkspaceViewModel : ViewModelBase
 
     private AssetNode BuildWeaponNode(WeaponTypeInfo weapon)
     {
-        var (meshPaths, texturePaths) = BuildMeshArraysForWeapon(weapon);
+        var (meshPaths, texturePaths, asb, adb) = BuildMeshArraysForWeapon(weapon);
 
         var node = new AssetNode
         {
             Icon = "⚔",
             Label = $"[{weapon.Id}]",
-            AssetData = new AssetData { MeshPaths = meshPaths, TexturePaths = texturePaths }
+            AssetData = new AssetData
+            {
+                MeshPaths = meshPaths,
+                TexturePaths = texturePaths,
+                Asb = asb,
+                Adb = adb,
+            }
         };
 
         for (int i = 0; i < weapon.Parts; i++)
@@ -613,24 +648,14 @@ public class WorkspaceViewModel : ViewModelBase
                 AssetData = new AssetData
                 {
                     MeshPaths = [meshPaths[i]],
-                    TexturePaths = [texturePaths[i]]
+                    TexturePaths = [texturePaths[i]],
+                    Asb = [asb[i]],
+                    Adb = [adb[i]],
                 }
             });
         }
 
         return node;
-    }
-
-    private (string[] Paths, string[] Textures) BuildMeshArraysForWeapon(WeaponTypeInfo weapon)
-    {
-        var meshes = new string[weapon.Parts];
-        var textures = new string[weapon.Parts];
-        for (int i = 0; i < weapon.Parts; i++)
-        {
-            meshes[i] = _gameData.ResolveMesh(weapon.MeshIds[i]) ?? $"? ({weapon.MeshIds[i]})";
-            textures[i] = _gameData.ResolveTexture(weapon.TextureIds[i]) ?? $"? ({weapon.TextureIds[i]})";
-        }
-        return (meshes, textures);
     }
 
     // ── Transform tree ────────────────────────────────────────────────────
@@ -644,19 +669,22 @@ public class WorkspaceViewModel : ViewModelBase
     }
 
     private AssetNode BuildTransformNode(TransformInfo t)
-    {       
-        // Look maps to an armor: armorId = Look * 1_000_000.
-        // Look 0, 98, 99 are special no-armor values (mirrors C3DRole::Transform / SetLook).
+    {
         AssetData? assetData = null;
 
         var armor = _gameData.FindArmor((uint)(t.Look * 1_000_000));
         if (armor != null)
         {
-            var (meshPaths, texturePaths) = BuildMeshArraysForArmor(armor);
+            var (meshPaths, texturePaths, asb, adb) = BuildMeshArraysForArmor(armor);
             if (meshPaths.Length > 0)
-                assetData = new AssetData { MeshPaths = meshPaths, TexturePaths = texturePaths };
+                assetData = new AssetData
+                {
+                    MeshPaths = meshPaths,
+                    TexturePaths = texturePaths,
+                    Asb = asb,
+                    Adb = adb,
+                };
         }
-
 
         return new AssetNode
         {
@@ -678,13 +706,19 @@ public class WorkspaceViewModel : ViewModelBase
 
     private AssetNode BuildMountNode(MountTypeInfo mount)
     {
-        var (meshPaths, texturePaths) = BuildMeshArraysForMount(mount);
+        var (meshPaths, texturePaths, asb, adb) = BuildMeshArraysForMount(mount);
 
         var node = new AssetNode
         {
             Icon = "🐴",
             Label = $"[{mount.Id}]",
-            AssetData = new AssetData { MeshPaths = meshPaths, TexturePaths = texturePaths }
+            AssetData = new AssetData
+            {
+                MeshPaths = meshPaths,
+                TexturePaths = texturePaths,
+                Asb = asb,
+                Adb = adb,
+            }
         };
 
         for (int i = 0; i < mount.Parts; i++)
@@ -699,7 +733,9 @@ public class WorkspaceViewModel : ViewModelBase
                 AssetData = new AssetData
                 {
                     MeshPaths = [meshPaths[i]],
-                    TexturePaths = [texturePaths[i]]
+                    TexturePaths = [texturePaths[i]],
+                    Asb = [asb[i]],
+                    Adb = [adb[i]],
                 }
             });
         }
@@ -707,17 +743,144 @@ public class WorkspaceViewModel : ViewModelBase
         return node;
     }
 
-    private (string[] Paths, string[] Textures) BuildMeshArraysForMount(MountTypeInfo mount)
+    // ── Mesh-array helpers ────────────────────────────────────────────────
+    // All helpers return (Paths, Textures, Asb, Adb) so blend state flows
+    // from every type's ini data through AssetData into the renderer.
+
+    /// <summary>SimpleObj has no Asb/Adb — fills arrays with the supplied defaults (or 5/6).</summary>
+    private (string[] Paths, string[] Textures, int[] Asb, int[] Adb) BuildMeshArrays(
+        C3DSimpleObjInfo obj, int defaultAsb = 5, int defaultAdb = 6)
+    {
+        var meshes = new string[obj.Parts];
+        var textures = new string[obj.Parts];
+        var asb = new int[obj.Parts];
+        var adb = new int[obj.Parts];
+        for (int i = 0; i < obj.Parts; i++)
+        {
+            meshes[i] = _gameData.ResolveMesh(obj.MeshIds[i]) ?? $"? ({obj.MeshIds[i]})";
+            textures[i] = _gameData.ResolveTexture(obj.TextureIds[i]) ?? $"? ({obj.TextureIds[i]})";
+            asb[i] = defaultAsb;
+            adb[i] = defaultAdb;
+        }
+        return (meshes, textures, asb, adb);
+    }
+
+    private (string[] Paths, string[] Textures, int[] Asb, int[] Adb) BuildMeshArraysForArmor(
+        ArmorTypeInfo armor)
+    {
+        var meshes = new string[armor.Parts];
+        var textures = new string[armor.Parts];
+        var asb = new int[armor.Parts];
+        var adb = new int[armor.Parts];
+        for (int i = 0; i < armor.Parts; i++)
+        {
+            meshes[i] = _gameData.ResolveMesh(armor.MeshIds[i]) ?? $"? ({armor.MeshIds[i]})";
+            textures[i] = _gameData.ResolveTexture(armor.TextureIds[i]) ?? $"? ({armor.TextureIds[i]})";
+            asb[i] = armor.Asb[i];
+            adb[i] = armor.Adb[i];
+        }
+        return (meshes, textures, asb, adb);
+    }
+
+    private (string[] Paths, string[] Textures, int[] Asb, int[] Adb) BuildMeshArraysForArmet(
+        ArmetTypeInfo armet)
+    {
+        var meshes = new string[armet.Parts];
+        var textures = new string[armet.Parts];
+        var asb = new int[armet.Parts];
+        var adb = new int[armet.Parts];
+        for (int i = 0; i < armet.Parts; i++)
+        {
+            meshes[i] = _gameData.ResolveMesh(armet.MeshIds[i]) ?? $"? ({armet.MeshIds[i]})";
+            textures[i] = _gameData.ResolveTexture(armet.TextureIds[i]) ?? $"? ({armet.TextureIds[i]})";
+            asb[i] = armet.Asb[i];
+            adb[i] = armet.Adb[i];
+        }
+        return (meshes, textures, asb, adb);
+    }
+
+    private (string[] Paths, string[] Textures, int[] Asb, int[] Adb) BuildMeshArraysForWeapon(
+        WeaponTypeInfo weapon)
+    {
+        var meshes = new string[weapon.Parts];
+        var textures = new string[weapon.Parts];
+        var asb = new int[weapon.Parts];
+        var adb = new int[weapon.Parts];
+        for (int i = 0; i < weapon.Parts; i++)
+        {
+            meshes[i] = _gameData.ResolveMesh(weapon.MeshIds[i]) ?? $"? ({weapon.MeshIds[i]})";
+            textures[i] = _gameData.ResolveTexture(weapon.TextureIds[i]) ?? $"? ({weapon.TextureIds[i]})";
+            asb[i] = weapon.Asb[i];
+            adb[i] = weapon.Adb[i];
+        }
+        return (meshes, textures, asb, adb);
+    }
+
+    private (string[] Paths, string[] Textures, int[] Asb, int[] Adb) BuildMeshArraysForMount(
+        MountTypeInfo mount)
     {
         var meshes = new string[mount.Parts];
         var textures = new string[mount.Parts];
+        var asb = new int[mount.Parts];
+        var adb = new int[mount.Parts];
         for (int i = 0; i < mount.Parts; i++)
         {
             meshes[i] = _gameData.ResolveMesh(mount.MeshIds[i]) ?? $"? ({mount.MeshIds[i]})";
             textures[i] = _gameData.ResolveTexture(mount.TextureIds[i]) ?? $"? ({mount.TextureIds[i]})";
+            asb[i] = mount.Asb[i];
+            adb[i] = mount.Adb[i];
         }
-        return (meshes, textures);
+        return (meshes, textures, asb, adb);
     }
+
+    /// <summary>
+    /// Resolves all renderable slots for a named effect key (e.g. "1ghost", "10000"),
+    /// including per-slot Asb/Adb from the effect's ini data.
+    /// Returns empty arrays when the key is unknown or has no resolvable slots.
+    /// </summary>
+    private (string[] Meshes, string[] Textures, int[] Asb, int[] Adb) BuildEffectParts(string effectKey)
+    {
+        var effect = _gameData.FindEffect(effectKey);
+        if (effect == null || effect.Amount == 0) return ([], [], [], []);
+
+        var meshes = new List<string>(effect.Amount);
+        var textures = new List<string>(effect.Amount);
+        var asb = new List<int>(effect.Amount);
+        var adb = new List<int>(effect.Amount);
+
+        for (int i = 0; i < effect.Amount; i++)
+        {
+            var mesh = _gameData.ResolveEffectObj(effect.EffectIds[i]);
+            if (string.IsNullOrEmpty(mesh)) continue;   // unresolvable slot — skip
+
+            meshes.Add(mesh);
+            textures.Add(_gameData.ResolveTexture((ulong)effect.TextureIds[i])
+                         ?? $"? ({effect.TextureIds[i]})");
+            asb.Add(effect.Asb[i]);
+            adb.Add(effect.Adb[i]);
+        }
+
+        return (meshes.ToArray(), textures.ToArray(), asb.ToArray(), adb.ToArray());
+    }
+
+    private MotionData[] BuildMotionEntries(NpcTypeInfo npc)
+    {
+        var entries = new List<MotionData>();
+        TryAddMotion(entries, "StandBy", npc.StandByMotionId);
+        TryAddMotion(entries, "Blaze", npc.BlazeMotionId);
+        TryAddMotion(entries, "Rest", npc.RestMotionId);
+        return entries.ToArray();
+    }
+
+    private void TryAddMotion(List<MotionData> entries, string label, ulong id)
+    {
+        if (id == 0) return;
+        var path = _gameData.ResolveMotion(id);
+        if (path != null)
+            entries.Add(new MotionData(label, path));
+    }
+
+    // ── Search / filter ───────────────────────────────────────────────────
 
     private void RefreshFilter()
     {
@@ -732,24 +895,16 @@ public class WorkspaceViewModel : ViewModelBase
         }
     }
 
-    /// <summary>
-    /// Returns a (possibly shallow-cloned) node if it or any descendant
-    /// matches <paramref name="query"/>.  Returns null when nothing matches.
-    /// When <paramref name="query"/> is empty every node passes.
-    /// </summary>
     private static AssetNode? FilterNode(AssetNode node, string query)
     {
-        // Empty query → pass everything through as-is (no allocation)
         if (string.IsNullOrEmpty(query))
             return node;
 
         bool selfMatch = node.Label.Contains(query, StringComparison.OrdinalIgnoreCase);
 
-        // Leaf node
         if (node.Children.Count == 0)
             return selfMatch ? node : null;
 
-        // Recurse into children
         var matchedChildren = node.Children
             .Select(c => FilterNode(c, query))
             .OfType<AssetNode>()
@@ -758,7 +913,6 @@ public class WorkspaceViewModel : ViewModelBase
         if (!selfMatch && matchedChildren.Count == 0)
             return null;
 
-        // Build a proxy root that holds only the matching subtree
         var proxy = new AssetNode
         {
             Icon = node.Icon,
@@ -766,8 +920,6 @@ public class WorkspaceViewModel : ViewModelBase
             AssetData = node.AssetData
         };
 
-        // If the root label itself matched, show ALL its children unfiltered.
-        // If only children matched, show only those.
         var childSource = selfMatch ? node.Children : matchedChildren;
         foreach (var child in childSource)
             proxy.Children.Add(child);
@@ -785,23 +937,26 @@ public class WorkspaceViewModel : ViewModelBase
         SelectFirstMotion(data);
     }
 
+    /// <summary>
+    /// Converts AssetData into the (MeshPath, TexturePath, Asb, Adb) tuples
+    /// that C3StudioGame.LoadC3Parts expects, so blend state flows from the ini
+    /// data all the way to the GPU.
+    /// </summary>
     private void LoadParts(AssetData data)
     {
         if (data.MeshPaths.Length == 0) return;
 
-        // Build display labels
         ModelPath = data.MeshPaths.Length == 1 ? data.MeshPaths[0] : $"{data.MeshPaths.Length} parts";
         TexturePath = data.TexturePaths.Length == 1 ? data.TexturePaths[0] : string.Empty;
 
-        // Build (mesh, texture) pairs for the loader
         var parts = data.MeshPaths
             .Select((mesh, i) =>
             {
-                // Manual texture override applies only to single-part loads
                 string? tex = i < data.TexturePaths.Length ? data.TexturePaths[i] : null;
+                // Manual texture override applies only to single-part loads
                 if (data.MeshPaths.Length == 1 && !string.IsNullOrEmpty(TexturePath))
                     tex = TexturePath;
-                return (MeshPath: mesh, TexturePath: tex);
+                return (MeshPath: mesh, TexturePath: tex, Asb: data.GetAsb(i), Adb: data.GetAdb(i));
             })
             .Where(p => !string.IsNullOrEmpty(p.MeshPath));
 
@@ -850,12 +1005,6 @@ public class WorkspaceViewModel : ViewModelBase
 
     // ── Browse / manual load ──────────────────────────────────────────────
 
-    /// <summary>
-    /// Opens a multi-select file dialog. All chosen .c3 files are stored in
-    /// <see cref="_modelPaths"/>. The display property <see cref="ModelPath"/>
-    /// shows the single path for one file, or "N files selected" for many.
-    /// TexturePath is auto-detected from the first file (single-file pick only).
-    /// </summary>
     private void BrowseFile()
     {
         using var dlg = new OpenFileDialog
@@ -870,13 +1019,10 @@ public class WorkspaceViewModel : ViewModelBase
 
         _modelPaths = dlg.FileNames.ToList();
 
-        // Update display summary
         ModelPath = _modelPaths.Count == 1
             ? _modelPaths[0]
             : $"{_modelPaths.Count} files selected";
 
-        // Auto-detect texture only when a single file is chosen.
-        // For multi-file picks the texture is resolved per-file at load time.
         TexturePath = _modelPaths.Count == 1
             ? FindTexture(_modelPaths[0])
             : string.Empty;
@@ -896,10 +1042,7 @@ public class WorkspaceViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// Loads all files that were selected via <see cref="BrowseFile"/>.
-    /// Each file gets its own auto-detected texture, except when exactly one
-    /// file was picked — in that case the manual <see cref="TexturePath"/> is
-    /// used as an override (matching the original single-file behaviour).
+    /// Manual load: blend defaults to 5/6 since there's no type-info source.
     /// </summary>
     private void LoadModel()
     {
@@ -907,21 +1050,19 @@ public class WorkspaceViewModel : ViewModelBase
 
         try
         {
-            IEnumerable<(string MeshPath, string? TexturePath)> parts;
+            IEnumerable<(string MeshPath, string? TexturePath, int Asb, int Adb)> parts;
 
             if (_modelPaths.Count == 1)
             {
-                // Single file: honour a manual TexturePath override, fall back to auto-detect.
                 var tex = !string.IsNullOrEmpty(TexturePath) ? TexturePath : FindTexture(_modelPaths[0]);
-                parts = new[] { (_modelPaths[0], string.IsNullOrEmpty(tex) ? null : tex) };
+                parts = [(MeshPath: _modelPaths[0], TexturePath: string.IsNullOrEmpty(tex) ? null : tex, Asb, Adb)];
             }
             else
             {
-                // Multiple files: auto-detect a texture alongside each mesh.
                 parts = _modelPaths.Select(mesh =>
                 {
                     string tex = FindTexture(mesh);
-                    return (MeshPath: mesh, TexturePath: string.IsNullOrEmpty(tex) ? null : tex);
+                    return (MeshPath: mesh, TexturePath: string.IsNullOrEmpty(tex) ? null : tex, Asb, Adb);
                 });
             }
 
@@ -953,62 +1094,6 @@ public class WorkspaceViewModel : ViewModelBase
     }
 
     private void ApplyMotion() => ApplyMotionSilent(MotionPath);
-
-    // ── Helpers ───────────────────────────────────────────────────────────
-
-    /// <summary>
-    /// Resolves all renderable slots for a named effect key (e.g. "1ghost", "10000").
-    /// Returns empty arrays when the key is unknown or has no resolvable slots.
-    /// </summary>
-    private (string[] Meshes, string[] Textures) BuildEffectParts(string effectKey)
-    {
-        var effect = _gameData.FindEffect(effectKey);
-        if (effect == null || effect.Amount == 0) return ([], []);
-
-        var meshes = new List<string>(effect.Amount);
-        var textures = new List<string>(effect.Amount);
-
-        for (int i = 0; i < effect.Amount; i++)
-        {
-            var mesh = _gameData.ResolveEffectObj(effect.EffectIds[i]);
-            if (string.IsNullOrEmpty(mesh)) continue;   // unresolvable slot — skip
-
-            meshes.Add(mesh);
-            textures.Add(_gameData.ResolveTexture((ulong)effect.TextureIds[i])
-                         ?? $"? ({effect.TextureIds[i]})");
-        }
-
-        return (meshes.ToArray(), textures.ToArray());
-    }
-
-    private (string[] Paths, string[] Textures) BuildMeshArrays(C3DSimpleObjInfo obj)
-    {
-        var meshes = new string[obj.Parts];
-        var textures = new string[obj.Parts];
-        for (int i = 0; i < obj.Parts; i++)
-        {
-            meshes[i] = _gameData.ResolveMesh(obj.MeshIds[i]) ?? $"? ({obj.MeshIds[i]})";
-            textures[i] = _gameData.ResolveTexture(obj.TextureIds[i]) ?? $"? ({obj.TextureIds[i]})";
-        }
-        return (meshes, textures);
-    }
-
-    private MotionData[] BuildMotionEntries(NpcTypeInfo npc)
-    {
-        var entries = new List<MotionData>();
-        TryAddMotion(entries, "StandBy", npc.StandByMotionId);
-        TryAddMotion(entries, "Blaze", npc.BlazeMotionId);
-        TryAddMotion(entries, "Rest", npc.RestMotionId);
-        return entries.ToArray();
-    }
-
-    private void TryAddMotion(List<MotionData> entries, string label, ulong id)
-    {
-        if (id == 0) return;
-        var path = _gameData.ResolveMotion(id);
-        if (path != null)
-            entries.Add(new MotionData(label, path));
-    }
 
     // ── Playback ──────────────────────────────────────────────────────────
 

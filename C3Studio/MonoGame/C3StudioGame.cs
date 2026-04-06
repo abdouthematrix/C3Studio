@@ -98,7 +98,7 @@ public class C3StudioGame : WpfGame
 
     protected override void Draw(GameTime gameTime)
     {
-        GraphicsDevice.Clear(Color.Gray);
+        GraphicsDevice.Clear(Color.Black);
 
         float aspect = (float)Math.Max(1, GraphicsDevice.Viewport.Width)
                              / Math.Max(1, GraphicsDevice.Viewport.Height);
@@ -126,15 +126,12 @@ public class C3StudioGame : WpfGame
             var model = _loader.LoadModel(relativePath);
             if (model == null) return;
 
-            // Texture: explicit override > same-dir auto-resolve
             int texIdx = _loader.ResolveTextureForModel(relativePath, texturePath);
             if (texIdx >= 0)
             {
                 var tex = C3Texture.Get(texIdx)?.Texture;
                 foreach (var phy in model.Phys)
-                {
                     phy.TexIndex = texIdx;
-                }
                 _renderer.LoadModelDirect(model, WorldCorrection);
                 if (tex != null) _renderer.OverrideTexture(tex);
             }
@@ -153,11 +150,12 @@ public class C3StudioGame : WpfGame
     }
 
     /// <summary>
-    /// Loads and merges multiple (mesh, texture) pairs into one model.
-    /// Used for multi-part NPCs / SimpleObjs.
+    /// Loads and merges multiple (mesh, texture, asb, adb) tuples into one model.
+    /// Used for multi-part NPCs / SimpleObjs / equipment that carry per-slot blend info.
     /// </summary>
-    public void LoadC3Parts(IEnumerable<(string MeshPath, string? TexturePath)> parts,
-                             string? motionPath = null)
+    public void LoadC3Parts(
+        IEnumerable<(string MeshPath, string? TexturePath, int Asb, int Adb)> parts,
+        string? motionPath = null)
     {
         if (_renderer == null || _loader == null) return;
         try
@@ -173,10 +171,19 @@ public class C3StudioGame : WpfGame
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine(
-                $"[C3StudioGame] LoadC3Parts: {ex.Message}");
+            System.Diagnostics.Debug.WriteLine($"[C3StudioGame] LoadC3Parts: {ex.Message}");
         }
     }
+
+    /// <summary>
+    /// Overrides the D3D blend factors for a single PHY slot in the current model.
+    /// Call after <see cref="LoadC3Parts"/> to fine-tune individual meshes.
+    /// </summary>
+    /// <param name="phyIndex">Zero-based index into the model's PHY list.</param>
+    /// <param name="asb">D3D source blend factor (e.g. 5 = SrcAlpha, 2 = One).</param>
+    /// <param name="adb">D3D destination blend factor (e.g. 6 = InvSrcAlpha, 2 = One).</param>
+    public void SetPhyBlend(int phyIndex, int asb, int adb) =>
+        _renderer?.SetPhyBlend(phyIndex, asb, adb);
 
     /// <summary>Swaps the animation on the current model.</summary>
     public void ChangeMotion(string relativePath)
@@ -264,21 +271,20 @@ public class C3StudioGame : WpfGame
     // ── Camera auto-fit ───────────────────────────────────────────────────
     private void AutoFitCamera(C3Model model)
     {
-        // OutputVertices are already in world space after LoadModelDirect calls Calculate()
-        // This bypasses all BBox transform uncertainty entirely
         var min = new Vector3(float.MaxValue);
         var max = new Vector3(float.MinValue);
         bool any = false;
 
         foreach (var phy in model.Phys)
         {
+            if (phy.PartIndex != 0) continue;
             if (phy.OutputVertices.Count == 0) continue;
             foreach (var v in phy.OutputVertices)
             {
                 min = Vector3.Min(min, v.Position);
                 max = Vector3.Max(max, v.Position);
                 any = true;
-            }            
+            }
         }
 
         if (!any) { _camera.Reset(); return; }

@@ -17,6 +17,10 @@ public class PtclFrame
 /// <summary>Pre-baked particle system (PTCL chunk). Renders view-aligned billboards.</summary>
 public class C3Ptcl : IDisposable
 {
+    public int PartIndex = -1;
+    // D3D blend factors: 5=SrcAlpha, 6=InvSrcAlpha (standard AlphaBlend)
+    public int BlendAsb { get; set; } = 5;
+    public int BlendAdb { get; set; } = 6;
     public string Name     { get; set; } = string.Empty;
     public string TexName  { get; set; } = string.Empty;
     public int    TexIndex { get; set; } = -1;
@@ -61,7 +65,7 @@ public class C3Ptcl : IDisposable
         return p;
     }
 
-    public void Draw(GraphicsDevice gd, BasicEffect effect,
+    public void Draw(GraphicsDevice gd, AlphaTestEffect effect,
                      Matrix view, Matrix projection, BlendState? blend = null)
     {
         if (Frames == null || _vb == null || _ib == null) return;
@@ -91,8 +95,10 @@ public class C3Ptcl : IDisposable
         gd.RasterizerState=RasterizerState.CullNone;
         gd.SamplerStates[0]=SamplerState.LinearWrap;
         effect.View=Matrix.Identity; effect.Projection=projection; effect.World=invView;
-        effect.TextureEnabled=tex!=null; effect.Texture=tex;
-        effect.VertexColorEnabled=true; effect.LightingEnabled=false;
+       // effect.TextureEnabled=tex!=null;
+        effect.Texture=tex;
+        effect.VertexColorEnabled=true; 
+        //effect.LightingEnabled=false;
         foreach (var pass in effect.CurrentTechnique.Passes)
         { pass.Apply(); gd.DrawUserIndexedPrimitives(PrimitiveType.TriangleList,_vb,0,frame.Count*4,_ib,0,frame.Count*2); }
     }
