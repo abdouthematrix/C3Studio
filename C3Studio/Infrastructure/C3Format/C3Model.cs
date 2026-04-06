@@ -175,20 +175,35 @@ public partial class C3Model
     }
 
     // New — used by the renderer when a stream is already open
-    public void ChangeMotion(Stream stream, Matrix rotationMatrix)
+    public void ChangeMotion(Stream stream, Matrix rotationMatrix, int index=0)
     {
-        Motions.Clear();
-        foreach (var phy in Phys) phy.Motion = null;
+        if (index == -1)
+        {
+            Motions.Clear();
+            foreach (var phy in Phys) phy.Motion = null;
 
-        var src = LoadFromStream(stream);
-        if (src.Motions.Count == 0) return;
+            var src = LoadFromStream(stream);
+            if (src.Motions.Count == 0) return;
 
-        // For merged multi-part models, Phys.Count is a multiple of the
-        // per-part motion count (e.g. 14 phys / 7 motions = 2 parts).
-        // Tile the incoming motions so every phy slot gets a binding.
-        int perPart = src.Motions.Count;
-        for (int i = 0; i < Phys.Count; i++)
-            Motions.Add(src.Motions[i % perPart]);
+            // For merged multi-part models, Phys.Count is a multiple of the
+            // per-part motion count (e.g. 14 phys / 7 motions = 2 parts).
+            // Tile the incoming motions so every phy slot gets a binding.
+            int perPart = src.Motions.Count;
+            for (int i = 0; i < Phys.Count; i++)
+                Motions.Add(src.Motions[i % perPart]);
+        }
+        else
+        {
+            var src = LoadFromStream(stream);
+            if (src.Motions.Count == 0) return;
+
+            for (int i = 0; i < Phys.Count; i++)
+            {
+                if (Phys[i].PartIndex == index)
+                    Phys[i].Motion = src.Motions[i];
+            }
+        }
+       
 
         BindPhyMotions(this, rotationMatrix);
     }

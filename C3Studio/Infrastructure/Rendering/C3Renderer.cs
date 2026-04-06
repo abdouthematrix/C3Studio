@@ -318,13 +318,15 @@ public class C3Renderer : IDisposable
     private void DrawPtcl(Matrix view, Matrix projection)
     {
         if (_model!.Ptcls.Count == 0) return;
-        foreach (var p in _model.Ptcls) p.Draw(_gd, _alphaTestEffect, view, projection, BlendState.AlphaBlend);
+        foreach (var p in _model.Ptcls)
+            p.Draw(_gd, _alphaTestEffect, view, projection); // no BlendState override
     }
 
     private void DrawShape(Matrix view, Matrix projection)
     {
         if (_model!.Shapes.Count == 0) return;
-        foreach (var s in _model.Shapes) s.Draw(_gd, _alphaTestEffect, view, projection);
+        foreach (var s in _model.Shapes)
+            s.Draw(_gd, _alphaTestEffect, view, projection);
     }
 
     // ------------------------------------------------------------------
