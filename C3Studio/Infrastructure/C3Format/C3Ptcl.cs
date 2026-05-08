@@ -27,8 +27,10 @@ public class C3Ptcl : IDisposable
 
     // D3D blend factors: 5=SrcAlpha, 6=InvSrcAlpha (standard AlphaBlend).
     // Common alternatives: 2/2 = additive, 5/2 = soft-additive glow.
+    // Changing default to 5/2 (Soft Additive) for particles since Conquer effects heavily rely on Additive glow,
+    // which naturally hides black-background textures without needing expensive pixel-level color keying.
     public int BlendAsb { get; set; } = 5;
-    public int BlendAdb { get; set; } = 6;
+    public int BlendAdb { get; set; } = 2;
 
     public string Name { get; set; } = string.Empty;
     public string TexName { get; set; } = string.Empty;
@@ -40,6 +42,20 @@ public class C3Ptcl : IDisposable
     public int CurrentFrame { get; set; }
     public Matrix LocalMatrix { get; set; } = Matrix.Identity;
 
+    // PTC3 specific fields
+    public bool IsPTC3 { get; set; }
+    public float FadeStartAge { get; set; }
+    public float FadeEndAge { get; set; }
+    public float TotalLifetime { get; set; }
+    public float MaxAlpha { get; set; }
+    public float MinAlpha { get; set; }
+    public float GlobalAlpha { get; set; } = 1.0f;
+    public float InitialAlpha { get; set; } = 0.0f;
+    public float RotationSpeed { get; set; }
+    public float ScaleX { get; set; } = 1.0f;
+    public float ScaleY { get; set; } = 1.0f;
+    public float ScaleZ { get; set; } = 1.0f;
+
     // Both buffers are allocated together in Load(); never null after that.
     private VertexPositionColorTexture[]? _vb;
     private short[]? _ib;
@@ -49,9 +65,10 @@ public class C3Ptcl : IDisposable
     private static readonly Dictionary<(int, int), BlendState> _blendCache = new();
 
     // ── Serialisation ─────────────────────────────────────────────────────
-    public static C3Ptcl Load(BinaryReader br)
+    public static C3Ptcl Load(BinaryReader br, string tag = "PTCL")
     {
         var p = new C3Ptcl();
+        p.IsPTC3 = (tag == "PTC3" || tag == "PTCL3" || tag == "PTCX");
 
         uint nameLen = br.ReadUInt32();
         p.Name = Encoding.ASCII.GetString(br.ReadBytes((int)nameLen)).TrimEnd('\0');
@@ -60,6 +77,29 @@ public class C3Ptcl : IDisposable
         p.TexName = Encoding.ASCII.GetString(br.ReadBytes((int)texLen)).TrimEnd('\0');
 
         p.TexRow = (int)br.ReadUInt32();
+
+        if (p.IsPTC3)
+        {
+            br.ReadByte(); // field_68
+            br.ReadByte(); // field_69
+            br.ReadUInt32(); // field_6C
+            br.ReadUInt32(); // field_70
+            p.ScaleX = br.ReadSingle(); // field_74
+            p.ScaleY = br.ReadSingle(); // field_78
+            p.ScaleZ = br.ReadSingle(); // field_7C
+            br.ReadUInt32(); // field_80
+            br.ReadUInt32(); // field_84
+            p.RotationSpeed = br.ReadSingle() * 180.0f / MathF.PI; // field_88 in degrees
+            p.MaxAlpha = br.ReadSingle(); // field_8C
+            p.MinAlpha = br.ReadSingle(); // field_90
+            
+            float lifetimeBits = br.ReadSingle(); // field_94 is float bits
+            p.TotalLifetime = lifetimeBits;
+            
+            p.FadeStartAge = br.ReadSingle(); // field_98
+            p.FadeEndAge = p.TotalLifetime * 0.8f;
+        }
+
         p.MaxCount = (int)br.ReadUInt32();
 
         // Allocate CPU buffers once — sized to the maximum particle count.
@@ -75,6 +115,11 @@ public class C3Ptcl : IDisposable
             uint count = br.ReadUInt32();
             if (count > 0)
             {
+                if (p.IsPTC3)
+                {
+                    br.ReadBytes((int)count * 2); // Skip lpIndices
+                }
+
                 frame.Positions = new Vector3[count];
                 for (int i = 0; i < (int)count; i++)
                     frame.Positions[i] = new Vector3(
@@ -118,29 +163,72 @@ public class C3Ptcl : IDisposable
 
         for (int n = 0; n < frame.Count; n++)
         {
+            float age = frame.Ages![n];
             // Clamp tile index so Ages slightly above 1.0 don't index OOB.
             // (C++ casts to DWORD without clamping — this is a safe improvement.)
-            int tileIdx = Math.Clamp((int)(frame.Ages![n] * segCount), 0, segCount - 1);
+            int tileIdx = Math.Clamp((int)(age * segCount), 0, segCount - 1);
             float u = (tileIdx % TexRow) * segSize;
             float v = (tileIdx / TexRow) * segSize;
 
             Vector3 vpos = Vector3.Transform(frame.Positions![n], xform);
             float s = frame.Sizes![n];
+            
+            Vector3 rotatedRight = new Vector3(s, 0, 0);
+            Vector3 rotatedUp = new Vector3(0, s, 0);
+            Color color = Color.White;
+
+            if (IsPTC3)
+            {
+                float rx = s * ScaleX;
+                float ry = s * ScaleY;
+
+                float rotationAngle = age * RotationSpeed * MathF.PI / 180.0f;
+                float cosRot = MathF.Cos(rotationAngle);
+                float sinRot = MathF.Sin(rotationAngle);
+
+                rotatedRight = new Vector3(rx * cosRot, rx * sinRot, 0);
+                rotatedUp = new Vector3(-ry * sinRot, ry * cosRot, 0);
+
+                float alpha = 1.0f;
+                if (age >= FadeStartAge) {
+                    if (age < FadeEndAge) {
+                        alpha = MaxAlpha;
+                    } else {
+                        float fadeRange = TotalLifetime - FadeEndAge;
+                        if (fadeRange > 0.0f) {
+                            float fadeFactor = (age - FadeEndAge) / fadeRange;
+                            alpha = (1.0f - fadeFactor) * MaxAlpha + fadeFactor * MinAlpha;
+                        } else {
+                            alpha = MinAlpha;
+                        }
+                    }
+                } else {
+                    if (FadeStartAge > 0.0f) {
+                        float fadeFactor = age / FadeStartAge;
+                        alpha = (1.0f - fadeFactor) * InitialAlpha + fadeFactor * MaxAlpha;
+                    } else {
+                        alpha = MaxAlpha;
+                    }
+                }
+                alpha *= GlobalAlpha;
+                alpha = Math.Clamp(alpha, 0f, 1f);
+                color = new Color(255, 255, 255, (int)(alpha * 255));
+            }
 
             // Billboard quad — same vertex layout as C++ PtclVertex array.
             // vb[n*4+0] = bottom-left,  vb[n*4+1] = bottom-right
             // vb[n*4+2] = top-left,     vb[n*4+3] = top-right
             _vb[n * 4 + 0] = new VertexPositionColorTexture(
-                new Vector3(vpos.X - s, vpos.Y - s, vpos.Z), Color.White,
+                new Vector3(vpos.X - rotatedRight.X - rotatedUp.X, vpos.Y - rotatedRight.Y - rotatedUp.Y, vpos.Z), color,
                 new Vector2(u, v + segSize));
             _vb[n * 4 + 1] = new VertexPositionColorTexture(
-                new Vector3(vpos.X + s, vpos.Y - s, vpos.Z), Color.White,
+                new Vector3(vpos.X + rotatedRight.X - rotatedUp.X, vpos.Y + rotatedRight.Y - rotatedUp.Y, vpos.Z), color,
                 new Vector2(u + segSize, v + segSize));
             _vb[n * 4 + 2] = new VertexPositionColorTexture(
-                new Vector3(vpos.X - s, vpos.Y + s, vpos.Z), Color.White,
+                new Vector3(vpos.X - rotatedRight.X + rotatedUp.X, vpos.Y - rotatedRight.Y + rotatedUp.Y, vpos.Z), color,
                 new Vector2(u, v));
             _vb[n * 4 + 3] = new VertexPositionColorTexture(
-                new Vector3(vpos.X + s, vpos.Y + s, vpos.Z), Color.White,
+                new Vector3(vpos.X + rotatedRight.X + rotatedUp.X, vpos.Y + rotatedRight.Y + rotatedUp.Y, vpos.Z), color,
                 new Vector2(u + segSize, v));
 
             // Two triangles per quad: (0,1,2) and (2,1,3)

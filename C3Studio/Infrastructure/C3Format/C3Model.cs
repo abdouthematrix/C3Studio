@@ -73,9 +73,19 @@ public partial class C3Model
                     model.Omnis.Add(C3Omni.Load(br));
                     break;
 
-
+                case "PTCX":
+                case "PTC3":
+                case "PTCL3":
+                    {
+                        var ptcl = C3Ptcl.Load(br, chunk.Tag);
+                        model.Ptcls.Add(ptcl);
+                    }
+                    break;
                 case "PTCL":
-                    model.Ptcls.Add(C3Ptcl.Load(br));
+                    {
+                        var ptcl = C3Ptcl.Load(br, chunk.Tag);
+                        model.Ptcls.Add(ptcl);
+                    }
                     break;
 
                 case "SCEN":
@@ -109,7 +119,7 @@ public partial class C3Model
 
         return model;
     }
-
+    
     //// ------------------------------------------------------------------
     //public bool ReplacePhy(string targetName, string sourcePath,
     //                       string? sourceMeshName  = null,
