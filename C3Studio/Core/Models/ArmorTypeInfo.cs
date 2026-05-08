@@ -18,6 +18,20 @@ public class ArmorTypeInfo
 
     /// <summary>The raw numeric section ID (e.g. 1000000).</summary>
     public uint Id { get; set; }
+    public int Look => (int)(Id / 1_000_000);
+    public int SubType
+    {
+        get
+        {
+            // Keep only last 6 digits
+            int trimmed = (int)(Id % 1_000_000);
+
+            // Extract the first 3 digits of those 6
+            int type = trimmed / 1_000;
+
+            return type;
+        }
+    }
 
     /// <summary>Number of active mesh/texture slots.</summary>
     public int Parts { get; set; }

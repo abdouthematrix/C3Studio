@@ -12,6 +12,19 @@ public sealed class WeaponTypeInfo
     public const int MaxParts = 4;
 
     public uint Id { get; set; }
+    public int SubType
+    {
+        get
+        {
+            // Keep only last 6 digits
+            int trimmed = (int)(Id % 1_000_000);
+
+            // Extract the first 3 digits of those 6
+            int type = trimmed / 1_000;
+
+            return type;
+        }
+    }
     public int Parts { get; set; } = 1;
 
     // Per-slot arrays (index 0 = the single part in old-format entries)

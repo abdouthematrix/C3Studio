@@ -18,13 +18,13 @@ public sealed class ItemTextureInfo
 
     /// <summary>Base item ID (numeric section header).</summary>
     public uint Id { get; set; }
-
-    public int Type
+    public int Look => (int)(Id / 1_000_000);    
+    public int SubType
     {
         get
         {
             // Keep only last 6 digits
-            int trimmed = (int)(Id % 1000000);
+            int trimmed = (int)(Id % 1_000_000);
 
             // Extract the first 3 digits of those 6
             int type = trimmed / 1000;

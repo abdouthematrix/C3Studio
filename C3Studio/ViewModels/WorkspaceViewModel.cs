@@ -515,11 +515,73 @@ public class WorkspaceViewModel : ViewModelBase
 
     // ── Armor tree ────────────────────────────────────────────────────────
 
+    private string GetLookLabel(int look) => look switch
+    {
+        1 => "Small Female",
+        2 => "Big Female",
+        3 => "Small Male",
+        4 => "Big Male",
+        _ => "Other"
+    };
+
     private AssetNode BuildArmorRoot()
     {
-        var root = new AssetNode { Icon = "🛡", Label = $"Armors ({_gameData.Armors.Count})" };
-        foreach (var armor in _gameData.Armors)
-            root.Children.Add(BuildArmorNode(armor));
+        var root = new AssetNode
+        {
+            Icon = "🛡",
+            Label = $"Armors ({_gameData.Armors.Count})"
+        };
+
+        var grouped = _gameData.Armors
+            .GroupBy(a => a.SubType)
+            .OrderBy(g => g.Key);
+
+        foreach (var subtypeGroup in grouped)
+        {
+            var subtypeNode = new AssetNode
+            {
+                Icon = "🔷",
+                Label = $"Subtype {subtypeGroup.Key}"
+            };
+
+            // Separate known looks (1–4) and group all others together
+            var knownLooks = subtypeGroup.Where(a => a.Look >= 1 && a.Look <= 4)
+                                         .GroupBy(a => a.Look)
+                                         .OrderBy(lg => lg.Key);
+
+            foreach (var lookGroup in knownLooks)
+            {
+                var lookNode = new AssetNode
+                {
+                    Icon = "👤",
+                    Label = GetLookLabel(lookGroup.Key)
+                };
+
+                foreach (var armor in lookGroup)
+                    lookNode.Children.Add(BuildArmorNode(armor));
+
+                subtypeNode.Children.Add(lookNode);
+            }
+
+            // Handle "Other" looks
+            var otherLooks = subtypeGroup.Where(a => a.Look < 1 || a.Look > 4);
+            if (otherLooks.Any())
+            {
+                var otherNode = new AssetNode
+                {
+                    Icon = "👤",
+                    Label = "Other"
+                };
+
+                foreach (var armor in otherLooks)
+                    otherNode.Children.Add(BuildArmorNode(armor));
+
+                subtypeNode.Children.Add(otherNode);
+            }
+
+            root.Children.Add(subtypeNode);
+        }
+
         return root;
     }
 
@@ -566,11 +628,65 @@ public class WorkspaceViewModel : ViewModelBase
 
     private AssetNode BuildArmetRoot()
     {
-        var root = new AssetNode { Icon = "⛑", Label = $"Armets ({_gameData.Armets.Count})" };
-        foreach (var armet in _gameData.Armets)
-            root.Children.Add(BuildArmetNode(armet));
+        var root = new AssetNode
+        {
+            Icon = "⛑",
+            Label = $"Armets ({_gameData.Armets.Count})"
+        };
+
+        var grouped = _gameData.Armets
+            .GroupBy(a => a.SubType)
+            .OrderBy(g => g.Key);
+
+        foreach (var subtypeGroup in grouped)
+        {
+            var subtypeNode = new AssetNode
+            {
+                Icon = "🔷",
+                Label = $"Subtype {subtypeGroup.Key}"
+            };
+
+            // Handle known looks (1–4)
+            var knownLooks = subtypeGroup.Where(a => a.Look >= 1 && a.Look <= 4)
+                                         .GroupBy(a => a.Look)
+                                         .OrderBy(lg => lg.Key);
+
+            foreach (var lookGroup in knownLooks)
+            {
+                var lookNode = new AssetNode
+                {
+                    Icon = "👤",
+                    Label = GetLookLabel(lookGroup.Key)
+                };
+
+                foreach (var armet in lookGroup)
+                    lookNode.Children.Add(BuildArmetNode(armet));
+
+                subtypeNode.Children.Add(lookNode);
+            }
+
+            // Handle "Other" looks
+            var otherLooks = subtypeGroup.Where(a => a.Look < 1 || a.Look > 4);
+            if (otherLooks.Any())
+            {
+                var otherNode = new AssetNode
+                {
+                    Icon = "👤",
+                    Label = "Other"
+                };
+
+                foreach (var armet in otherLooks)
+                    otherNode.Children.Add(BuildArmetNode(armet));
+
+                subtypeNode.Children.Add(otherNode);
+            }
+
+            root.Children.Add(subtypeNode);
+        }
+
         return root;
     }
+
 
     private AssetNode BuildArmetNode(ArmetTypeInfo armet)
     {
@@ -613,13 +729,103 @@ public class WorkspaceViewModel : ViewModelBase
 
     // ── Weapon tree ───────────────────────────────────────────────────────
 
+    // Define your subtype lookup
+    private static readonly Dictionary<int, string> WeaponSubTypes = new Dictionary<int, string>
+{
+    {000, "Boxing"},
+    {410, "Blade"},
+    {420, "Sword"},
+    {421, "Backsword"},
+    {430, "Hook"},
+    {440, "Whip"},
+    {441, "Mace"},
+    {450, "Axe"},
+    {460, "Hammer"},
+    {470, "Crutch"},
+    {480, "Club"},
+    {481, "Scepter"},
+    {490, "Dagger"},
+    {491, "Prod"},
+    {492, "Fan"},
+    {493, "Flute"},
+    {510, "Glaive"},
+    {511, "Scythe"},
+    {520, "Epee"},
+    {521, "Zither"},
+    {522, "Lute"},
+    {530, "Poleaxe"},
+    {540, "LongHammer"},
+    {550, "Scythe"},
+    {560, "Spear"},
+    {562, "Pickaxe"},
+    {570, "Spade"},
+    {580, "Halbert"},
+    {561, "Wand"},
+    {500, "Bow"},
+    {601, "NinjaSword"},
+    {613, "ThrowingKnife"},
+    {617, "Nunchaku"},
+    {700, "Boxing"},
+    {710, "Blade"},
+    {720, "Sword"},
+    {721, "MagicSword"},
+    {730, "Hook"},
+    {740, "Whip"},
+    {741, "Mace"},
+    {750, "Axe"},
+    {760, "Hammer"},
+    {770, "Crutch"},
+    {780, "Club"},
+    {781, "Scepter"},
+    {790, "Dagger"},
+    {791, "Prod"},
+    {792, "Fan"},
+    {793, "Flute"},
+    {900, "Shield"},
+    {422, "Other"},
+    {610, "PrayerBeads"},
+    {611, "Rapier"},
+    {612, "Pistol"},
+    {614, "CrossSaber"},
+    {616, "Nobunaga`sClaw"},
+    {619, "Hossu"},
+    {620, "PolarBacksword"}
+};
+
     private AssetNode BuildWeaponRoot()
     {
-        var root = new AssetNode { Icon = "⚔", Label = $"Weapons ({_gameData.Weapons.Count})" };
-        foreach (var weapon in _gameData.Weapons)
-            root.Children.Add(BuildWeaponNode(weapon));
+        var root = new AssetNode
+        {
+            Icon = "⚔",
+            Label = $"Weapons ({_gameData.Weapons.Count})"
+        };
+
+        // Group by SubType code
+        var grouped = _gameData.Weapons.GroupBy(w => w.SubType);
+
+        foreach (var group in grouped)
+        {
+            // Lookup subtype name
+            string subtypeName = WeaponSubTypes.TryGetValue(group.Key, out var name)
+                ? name
+                : $"({group.Key})";
+
+            var subtypeNode = new AssetNode
+            {
+                Icon = "🗡",
+                Label = $"{subtypeName} ({group.Count()})"
+            };
+
+            foreach (var weapon in group)
+                subtypeNode.Children.Add(BuildWeaponNode(weapon));
+
+            root.Children.Add(subtypeNode);
+        }
+
         return root;
     }
+
+
 
     private AssetNode BuildWeaponNode(WeaponTypeInfo weapon)
     {
@@ -701,8 +907,44 @@ public class WorkspaceViewModel : ViewModelBase
     private AssetNode BuildMountRoot()
     {
         var root = new AssetNode { Icon = "🐴", Label = $"Mounts ({_gameData.Mounts.Count})" };
-        foreach (var mount in _gameData.Mounts)
-            root.Children.Add(BuildMountNode(mount));
+
+        // Group by SubType first
+        var groupedBySubtype = _gameData.Mounts
+            .GroupBy(m => m.SubType)
+            .OrderBy(g => g.Key); // optional: sort subtypes
+
+        foreach (var subtypeGroup in groupedBySubtype)
+        {
+            var subtypeNode = new AssetNode
+            {
+                Icon = "📦",
+                Label = $"Subtype {subtypeGroup.Key} ({subtypeGroup.Count()})"
+            };
+
+            // Within each subtype, group by Level
+            var groupedByLevel = subtypeGroup
+                .GroupBy(m => m.Level)
+                .OrderBy(g => g.Key); // optional: sort levels
+
+            foreach (var levelGroup in groupedByLevel)
+            {
+                var levelNode = new AssetNode
+                {
+                    Icon = "🎚️",
+                    Label = $"Level {levelGroup.Key} ({levelGroup.Count()})"
+                };
+
+                foreach (var mount in levelGroup)
+                {
+                    levelNode.Children.Add(BuildMountNode(mount));
+                }
+
+                subtypeNode.Children.Add(levelNode);
+            }
+
+            root.Children.Add(subtypeNode);
+        }
+
         return root;
     }
 
@@ -753,12 +995,12 @@ public class WorkspaceViewModel : ViewModelBase
 
         // Group by SubType first, then by Look/Gender
         var grouped = _gameData.ItemTextures
-            .GroupBy(item => GetSubType(item.Id)) // group by subtype first
+            .GroupBy(item => item.SubType) // group by subtype first
             .OrderBy(g => g.Key)
             .Select(g => new
             {
                 SubType = g.Key,
-                LookGroups = g.GroupBy(item => GetLook(item.Id))
+                LookGroups = g.GroupBy(item => item.Look)
                               .OrderBy(lg => lg.Key)
             });
 
@@ -775,14 +1017,7 @@ public class WorkspaceViewModel : ViewModelBase
                 var lookNode = new AssetNode
                 {
                     Icon = "👤",
-                    Label = lookGroup.Key switch
-                    {
-                        1 => "Small Female",
-                        2 => "Big Female",
-                        3 => "Small Male",
-                        4 => "Big Male",
-                        _ => "Both"
-                    }
+                    Label = GetLookLabel(lookGroup.Key)
                 };
 
                 foreach (var item in lookGroup)
@@ -796,12 +1031,6 @@ public class WorkspaceViewModel : ViewModelBase
 
         return root;
     }
-
-    // Helpers to extract look and subtype from ID
-    private int GetLook(uint id) => (int)(id / 1000000); // first digit(s)
-    private int GetSubType(uint id) => (int)((id % 1000000) / 1000); // middle 3 digits
-
-
     private AssetNode BuildItemTextureNode(ItemTextureInfo item)
     {
         // Try to find the renderable mesh by matching the item ID across all equipment tables.
