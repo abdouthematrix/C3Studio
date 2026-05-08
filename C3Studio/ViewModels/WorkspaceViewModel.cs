@@ -309,7 +309,8 @@ public class WorkspaceViewModel : ViewModelBase
             StatusMessage = $"Ready — {_gameData.Npcs.Count} NPCs, {_gameData.SimpleObjs.Count} objects, " +
                             $"{_gameData.Effects.Count} effects, {_gameData.Armors.Count} armors, " +
                             $"{_gameData.Armets.Count} armets, {_gameData.Weapons.Count} weapons, " +
-                            $"{_gameData.Transforms.Count} transforms, {_gameData.Mounts.Count} mounts.";
+                            $"{_gameData.Transforms.Count} transforms, {_gameData.Mounts.Count} mounts, " +
+                            $"{_gameData.ItemTextures.Count} item textures.";
         }
         catch (Exception ex)
         {
@@ -338,6 +339,7 @@ public class WorkspaceViewModel : ViewModelBase
         AssetTree.Add(BuildWeaponRoot());
         AssetTree.Add(BuildTransformRoot());
         AssetTree.Add(BuildMountRoot());
+        AssetTree.Add(BuildItemTextureRoot());
         RefreshFilter();
     }
 
@@ -742,6 +744,197 @@ public class WorkspaceViewModel : ViewModelBase
 
         return node;
     }
+
+    // ── Item Texture tree ─────────────────────────────────────────────────
+
+    private AssetNode BuildItemTextureRoot()
+    {
+        var root = new AssetNode { Icon = "🎨", Label = $"Item Textures ({_gameData.ItemTextures.Count})" };
+
+        // Group by SubType first, then by Look/Gender
+        var grouped = _gameData.ItemTextures
+            .GroupBy(item => GetSubType(item.Id)) // group by subtype first
+            .OrderBy(g => g.Key)
+            .Select(g => new
+            {
+                SubType = g.Key,
+                LookGroups = g.GroupBy(item => GetLook(item.Id))
+                              .OrderBy(lg => lg.Key)
+            });
+
+        foreach (var subGroup in grouped)
+        {
+            var subNode = new AssetNode
+            {
+                Icon = "🔷",
+                Label = $"Subtype {subGroup.SubType}"
+            };
+
+            foreach (var lookGroup in subGroup.LookGroups)
+            {
+                var lookNode = new AssetNode
+                {
+                    Icon = "👤",
+                    Label = lookGroup.Key switch
+                    {
+                        1 => "Small Female",
+                        2 => "Big Female",
+                        3 => "Small Male",
+                        4 => "Big Male",
+                        _ => "Both"
+                    }
+                };
+
+                foreach (var item in lookGroup)
+                    lookNode.Children.Add(BuildItemTextureNode(item));
+
+                subNode.Children.Add(lookNode);
+            }
+
+            root.Children.Add(subNode);
+        }
+
+        return root;
+    }
+
+    // Helpers to extract look and subtype from ID
+    private int GetLook(uint id) => (int)(id / 1000000); // first digit(s)
+    private int GetSubType(uint id) => (int)((id % 1000000) / 1000); // middle 3 digits
+
+
+    private AssetNode BuildItemTextureNode(ItemTextureInfo item)
+    {
+        // Try to find the renderable mesh by matching the item ID across all equipment tables.
+        var (baseMeshes, baseAsb, baseAdb) = TryFindItemMesh(item.Id);
+
+        var parentNode = new AssetNode
+        {
+            Icon = "🎨",
+            Label = $"[{item.Id}]  ({item.Amount} colors)",
+        };
+
+        uint previousTextureIds = 0;
+        uint duplicates = 0;
+        // Build one child per color variant.
+        for (int c = 0; c < item.Amount && c < ItemTextureInfo.MaxColors; c++)
+        {
+            var colorVal = (ItemColor)item.Colors[c];
+            uint texId = item.TextureIds[c];
+            if (previousTextureIds == texId)
+            {
+                duplicates++;
+                parentNode.Label = $"[{item.Id}]  ({item.Amount - duplicates} colors)";
+                continue;
+            }
+            previousTextureIds = texId;
+            string? texPath = _gameData.ResolveTexture(texId);
+
+            // Skip entirely unresolvable slots.
+            if (texPath == null && baseMeshes.Length == 0) continue;
+
+            // Replace every texture slot with this color's texture.
+            var texturePaths = new string[Math.Max(1, baseMeshes.Length)];
+            for (int i = 0; i < texturePaths.Length; i++)
+                texturePaths[i] = texPath ?? $"? ({texId})";
+
+            var colorNode = new AssetNode
+            {
+                Icon = "🎨",//ColorIcon(colorVal),
+                Label = $"{colorVal}  (tex {texId})",
+                AssetData = baseMeshes.Length > 0
+                    ? new AssetData
+                    {
+                        MeshPaths = baseMeshes,
+                        TexturePaths = texturePaths,
+                        Asb = baseAsb,
+                        Adb = baseAdb,
+                    }
+                    : null,
+            };
+
+            parentNode.Children.Add(colorNode);
+        }
+
+        return parentNode;
+    }
+
+    /// <summary>
+    /// Tries to find the mesh(es) for <paramref name="itemId"/> by probing
+    /// Armor → Armet → Weapon in order.
+    /// Returns empty arrays when no match is found (texture-only entry).
+    /// </summary>
+    private (string[] Meshes, int[] Asb, int[] Adb) TryFindItemMesh(uint itemId)
+    {
+
+        var armor = _gameData.FindArmor(itemId);
+        if (armor != null)
+        {
+            var meshes = new string[armor.Parts];
+            var asb = new int[armor.Parts];
+            var adb = new int[armor.Parts];
+            for (int i = 0; i < armor.Parts; i++)
+            {
+                meshes[i] = _gameData.ResolveMesh(armor.MeshIds[i]) ?? $"? ({armor.MeshIds[i]})";
+                asb[i] = armor.Asb[i];
+                adb[i] = armor.Adb[i];
+            }
+            return (meshes, asb, adb);
+        }
+
+        var armet = _gameData.FindArmet(itemId);
+        if (armet != null)
+        {
+            var meshes = new string[armet.Parts];
+            var asb = new int[armet.Parts];
+            var adb = new int[armet.Parts];
+            for (int i = 0; i < armet.Parts; i++)
+            {
+                meshes[i] = _gameData.ResolveMesh(armet.MeshIds[i]) ?? $"? ({armet.MeshIds[i]})";
+                asb[i] = armet.Asb[i];
+                adb[i] = armet.Adb[i];
+            }
+            return (meshes, asb, adb);
+        }
+
+        var weapon = _gameData.FindWeapon(itemId);
+        if (weapon != null)
+        {
+            var meshes = new string[weapon.Parts];
+            var asb = new int[weapon.Parts];
+            var adb = new int[weapon.Parts];
+            for (int i = 0; i < weapon.Parts; i++)
+            {
+                meshes[i] = _gameData.ResolveMesh(weapon.MeshIds[i]) ?? $"? ({weapon.MeshIds[i]})";
+                asb[i] = weapon.Asb[i];
+                adb[i] = weapon.Adb[i];
+            }
+            return (meshes, asb, adb);
+        }
+
+        var obj = _gameData.ResolveMesh(itemId);
+        if (!string.IsNullOrEmpty(obj))
+        {
+            var meshes = new[] { obj };
+            var asb = new[] { 5 };
+            var adb = new[] { 2 };           
+            return (meshes, asb, adb);
+        }
+
+        return ([], [], []);
+    }
+
+    private static string ColorIcon(ItemColor color) => color switch
+    {
+        ItemColor.Black => "⬛",
+        ItemColor.Orange => "🟠",
+        ItemColor.LightBlue => "🩵",
+        ItemColor.Red => "🔴",
+        ItemColor.Blue => "🔵",
+        ItemColor.Yellow => "🟡",
+        ItemColor.Purple => "🟣",
+        ItemColor.White => "⬜",
+        _ => "🎨",
+    };
 
     // ── Mesh-array helpers ────────────────────────────────────────────────
     // All helpers return (Paths, Textures, Asb, Adb) so blend state flows

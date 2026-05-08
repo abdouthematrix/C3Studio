@@ -14,6 +14,7 @@ public interface IGameDataService
     IReadOnlyList<WeaponTypeInfo> Weapons { get; }
     IReadOnlyList<TransformInfo> Transforms { get; }
     IReadOnlyList<MountTypeInfo> Mounts { get; }
+    IReadOnlyList<ItemTextureInfo> ItemTextures { get; }
     IReadOnlyDictionary<ulong, string> MeshMap { get; }
     IReadOnlyDictionary<ulong, string> TextureMap { get; }
     IReadOnlyDictionary<ulong, string> MotionMap { get; }
@@ -41,6 +42,9 @@ public interface IGameDataService
     ArmetTypeInfo? FindArmet(uint id);
     WeaponTypeInfo? FindWeapon(uint id);
     TransformInfo? FindTransform(int index);
+    ItemTextureInfo? FindItemTexture(uint id);
+    uint ResolveItemTexture(uint itemId, ItemColor color);
+    uint ResolveItemTexture(uint itemId, byte colorValue);
 }
 
 public class GameDataService : IGameDataService
@@ -53,6 +57,7 @@ public class GameDataService : IGameDataService
     private List<WeaponTypeInfo> _weapons = new();
     private List<TransformInfo> _transforms = new();
     private List<MountTypeInfo> _mounts = new();
+    private List<ItemTextureInfo> _itemTextures = new();
     private Dictionary<ulong, string> _mesh = new();
     private Dictionary<ulong, string> _tex = new();
     private Dictionary<ulong, string> _motion = new();
@@ -68,6 +73,7 @@ public class GameDataService : IGameDataService
     public IReadOnlyList<WeaponTypeInfo> Weapons => _weapons;
     public IReadOnlyList<TransformInfo> Transforms => _transforms;
     public IReadOnlyList<MountTypeInfo> Mounts => _mounts;
+    public IReadOnlyList<ItemTextureInfo> ItemTextures => _itemTextures;
 
     public IReadOnlyDictionary<ulong, string> MeshMap => _mesh;
     public IReadOnlyDictionary<ulong, string> TextureMap => _tex;
@@ -102,11 +108,12 @@ public class GameDataService : IGameDataService
                                   //.OrderBy(t => t.Index)
                                   .ToList();
         _mounts = MountIniParser.Parse(Ini("Mount.ini"));
+        _itemTextures = ItemTextureIniParser.Parse(Ini("ItemTexture.ini"));
 
         _mesh = Cast(ResIniParser.Parse(Ini("3dobj.ini")));
         _tex = Cast(ResIniParser.Parse(Ini("3dtexture.ini")));
         _motion = Cast(ResIniParser.Parse(Ini("3dmotion.ini")));
-        _effectObj = Cast(ResIniParser.Parse(Ini("3DEffectObj.ini")));      
+        _effectObj = Cast(ResIniParser.Parse(Ini("3DEffectObj.ini")));
         _weaponMotion = Cast(ResIniParser.Parse(Ini("WeaponMotion.ini")));
         _mountMotion = Cast(ResIniParser.Parse(Ini("MountMotion.ini")));
         _loadedPath = conquerPath;
@@ -240,4 +247,21 @@ public class GameDataService : IGameDataService
         foreach (var t in Transforms) if (t.Index == index) return t;
         return null;
     }
+
+    public ItemTextureInfo? FindItemTexture(uint id)
+    {
+        foreach (var it in ItemTextures) if (it.Id == id) return it;
+        return null;
+    }
+
+    /// <summary>
+    /// Returns the texture ID for <paramref name="itemId"/> + <paramref name="color"/>,
+    /// or <c>0</c> if no entry is found.
+    /// </summary>
+    public uint ResolveItemTexture(uint itemId, ItemColor color)
+        => FindItemTexture(itemId)?.GetTexture(color) ?? 0;
+
+    /// <inheritdoc cref="ResolveItemTexture(uint,ItemColor)"/>
+    public uint ResolveItemTexture(uint itemId, byte colorValue)
+        => FindItemTexture(itemId)?.GetTexture(colorValue) ?? 0;
 }
