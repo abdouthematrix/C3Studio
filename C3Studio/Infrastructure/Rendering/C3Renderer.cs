@@ -275,10 +275,11 @@ public class C3Renderer : IDisposable
         {
             var phy = rd.Phy;
             if (!phy.Draw || phy.NormalTriCount == 0 || !phy.IsFullyOpaque || rd.VertexBuffer == null) continue;
-            if (!IsMeshVisible(phy)) continue;
+            if (!IsMeshVisible(phy)) continue;            
             _gd.RasterizerState = phy.TwoSided
                 ? RasterizerState.CullNone
-                : RasterizerState.CullCounterClockwise;
+                : RasterizerState.CullClockwise;
+            _gd.BlendState = ResolveBlendState(phy.BlendAsb, phy.BlendAdb);
             SetPhyAlphaEffect(rd);
             _gd.SetVertexBuffer(rd.VertexBuffer);
             _gd.Indices = rd.IndexBuffer;
@@ -301,7 +302,7 @@ public class C3Renderer : IDisposable
             if (!tn && !at) continue;
             _gd.RasterizerState = phy.TwoSided
                 ? RasterizerState.CullNone
-                : RasterizerState.CullCounterClockwise;
+                : RasterizerState.CullClockwise;                
             _gd.BlendState = ResolveBlendState(phy.BlendAsb, phy.BlendAdb);
             SetPhyAlphaEffect(rd);
             _gd.SetVertexBuffer(rd.VertexBuffer);

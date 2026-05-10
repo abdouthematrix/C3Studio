@@ -163,6 +163,7 @@ public class C3Phy
                 if (sv.BoneWeight[l] > 0f)
                 { pos = Vector3.Transform(sv.Positions[0], bone[sv.BoneIndex[l]]); break; }
 
+            pos.Z = -pos.Z;  // flip D3D left-hand → MonoGame right-hand
             OutputVertices[v].Position = pos;
             OutputVertices[v].TexCoord = tex > -1
                 ? new Vector2(sv.TexCoord.X + (tex % TexRow) * seg, sv.TexCoord.Y + (tex / TexRow) * seg)

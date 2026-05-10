@@ -20,8 +20,7 @@ public class C3StudioGame : WpfGame
 {
     // ── World transform applied to every loaded model ─────────────────────
     private static readonly Matrix WorldCorrection =
-        Matrix.CreateRotationX(MathHelper.ToRadians(90f)) *
-        Matrix.CreateRotationY(MathHelper.ToRadians(180f));
+        Matrix.CreateRotationX(MathHelper.ToRadians(90f));
 
     // ── DI / services ─────────────────────────────────────────────────────
     private IAssetFileService? _assetService;
@@ -116,7 +115,7 @@ public class C3StudioGame : WpfGame
 
     protected override void Draw(GameTime gameTime)
     {
-        GraphicsDevice.Clear(Color.Black);
+        GraphicsDevice.Clear(Color.Gray);
 
         float aspect = (float)Math.Max(1, GraphicsDevice.Viewport.Width)
                              / Math.Max(1, GraphicsDevice.Viewport.Height);
