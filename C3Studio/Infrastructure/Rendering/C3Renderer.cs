@@ -392,8 +392,8 @@ public class C3Renderer : IDisposable
 
         // Reuse MonoGame built-ins for the two most common cases to avoid
         // allocating extra GPU objects that are functionally identical.
-        if (src == Blend.SourceAlpha && dst == Blend.InverseSourceAlpha)
-            return _blendCache[key] = BlendState.AlphaBlend;
+        //if (src == Blend.SourceAlpha && dst == Blend.InverseSourceAlpha)
+        //    return _blendCache[key] = BlendState.AlphaBlend;
 
         var bs = new BlendState
         {

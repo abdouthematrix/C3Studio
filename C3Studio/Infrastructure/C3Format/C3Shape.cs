@@ -318,8 +318,8 @@ public class C3Shape : IDisposable
         var src = D3dBlend(asb);
         var dst = D3dBlend(adb);
 
-        if (src == Blend.SourceAlpha && dst == Blend.InverseSourceAlpha)
-            return _blendCache[key] = BlendState.AlphaBlend;
+        //if (src == Blend.SourceAlpha && dst == Blend.InverseSourceAlpha)
+        //    return _blendCache[key] = BlendState.AlphaBlend;
 
         var bs = new BlendState
         {

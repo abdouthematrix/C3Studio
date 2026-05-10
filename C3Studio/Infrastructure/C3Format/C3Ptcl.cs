@@ -303,8 +303,8 @@ public class C3Ptcl : IDisposable
         var dst = D3dBlend(adb);
 
         // Reuse the built-in singleton for the most common case.
-        if (src == Blend.SourceAlpha && dst == Blend.InverseSourceAlpha)
-            return _blendCache[key] = BlendState.AlphaBlend;
+        //if (src == Blend.SourceAlpha && dst == Blend.InverseSourceAlpha)
+        //    return _blendCache[key] = BlendState.AlphaBlend;
 
         var bs = new BlendState
         {
