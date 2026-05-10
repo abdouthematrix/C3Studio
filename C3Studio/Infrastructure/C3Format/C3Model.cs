@@ -237,7 +237,26 @@ public partial class C3Model
     public void UpdateShapes(bool b = false) { foreach (var s in Shapes) s.Update(b); }
 
     public int MaxFrameCount
-    { get { int m = 0; foreach (var mo in Motions) if (mo.FrameCount > m) m = mo.FrameCount; return m; } }
+    {
+        get
+        {
+            int m = 0;
+
+            // Include standard motions
+            foreach (var mo in Motions)
+                if (mo.FrameCount > m) m = mo.FrameCount;
+            // Include shape motions
+            foreach (var s in Shapes)
+                if (s.Motion?.FrameCount > m) m = s.Motion.FrameCount;
+
+            foreach (var p in Ptcls)
+                if (p.Frames?.Length > m) m = p.Frames.Length;
+
+            foreach (var s in Scenes)
+                if (s.Frames?.Length > m) m = s.Frames.Length;
+            return m;
+        }
+    }
 
     internal static void BindPhyMotions(C3Model model, Matrix? rotation = null)
     {

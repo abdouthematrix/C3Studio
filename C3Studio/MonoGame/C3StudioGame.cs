@@ -88,8 +88,26 @@ public class C3StudioGame : WpfGame
             if (IsPlaying) _renderer.Update(gameTime);
 
             int total = _renderer.Model?.MaxFrameCount ?? 0;
-            int current = _renderer.Model?.Motions.Count > 0
-                            ? _renderer.Model.Motions[0].CurrentFrame : 0;
+            int current = 0;
+            var model = _renderer.Model;
+            if (model != null)
+            {
+                // Prefer physics motions
+                if (model.Motions.Count > 0)
+                    current = model.Motions[0].CurrentFrame;
+
+                // Otherwise check shape motions
+                else if (model.Shapes.Count > 0 && model.Shapes[0].Motion != null)
+                    current = model.Shapes[0].Motion!.CurrentFrame;
+
+                // Otherwise check particles
+                else if (model.Ptcls.Count > 0)
+                    current = model.Ptcls[0].CurrentFrame;
+
+                // Otherwise check scenes
+                else if (model.Scenes.Count > 0)
+                    current = model.Scenes[0].CurrentFrame;
+            }
             FrameChanged?.Invoke(current, total);
         }
 
