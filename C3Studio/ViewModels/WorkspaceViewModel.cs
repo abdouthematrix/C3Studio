@@ -355,31 +355,28 @@ public class WorkspaceViewModel : ViewModelBase
 
     private AssetNode BuildNpcNode(NpcTypeInfo npc)
     {
-        var node = new AssetNode { Icon = "⚔", Label = $"[{npc.NpcType}] {npc.Name}" };
-
         var obj = _gameData.FindSimpleObj(npc.SimpleObjId);
         var motions = BuildMotionEntries(npc);
 
-        // SimpleObj parts: use the NPC's scalar Asb/Adb for all slots.
+        // ── Main mesh (SimpleObj) ─────────────────────────────────────────
         string[] objMeshes = [], objTextures = [];
         int[] objAsb = [], objAdb = [];
         if (obj != null)
-        {
             (objMeshes, objTextures, objAsb, objAdb) = BuildMeshArrays(obj, npc.Asb, npc.Adb);
-        }
 
-        // Effect parts: each slot carries its own per-slot Asb/Adb.
+        // ── Effect parts ──────────────────────────────────────────────────
         string[] efxMeshes = [], efxTextures = [];
         int[] efxAsb = [], efxAdb = [];
         if (!string.IsNullOrEmpty(npc.Effect))
-        {
             (efxMeshes, efxTextures, efxAsb, efxAdb) = BuildEffectParts(npc.Effect);
-        }
 
+        // ── Root node — loads everything combined ─────────────────────────
         var allMeshes = objMeshes.Concat(efxMeshes).ToArray();
         var allTextures = objTextures.Concat(efxTextures).ToArray();
         var allAsb = objAsb.Concat(efxAsb).ToArray();
         var allAdb = objAdb.Concat(efxAdb).ToArray();
+
+        var node = new AssetNode { Icon = "⚔", Label = $"[{npc.NpcType}] {npc.Name}" };
 
         if (allMeshes.Length > 0 || motions.Length > 0)
         {
@@ -391,6 +388,105 @@ public class WorkspaceViewModel : ViewModelBase
                 Asb = allAsb,
                 Adb = allAdb,
             };
+        }
+
+        // When both mesh and effect exist, group them under labelled headers.
+        // When only one exists, hoist its parts directly as children (no extra wrapper).
+        bool hasMesh = objMeshes.Length > 0;
+        bool hasEfx = efxMeshes.Length > 0;
+        bool grouped = hasMesh && hasEfx;
+
+        // ── Main NPC Mesh parts ───────────────────────────────────────────
+        if (hasMesh)
+        {
+            AssetNode meshContainer;
+            if (grouped)
+            {
+                meshContainer = new AssetNode
+                {
+                    Icon = "🔷",
+                    Label = $"{npc.SimpleObjId}",
+                    AssetData = new AssetData
+                    {
+                        MeshPaths = objMeshes,
+                        TexturePaths = objTextures,
+                        Motions = motions,
+                        Asb = objAsb,
+                        Adb = objAdb,
+                    }
+                };
+                node.Children.Add(meshContainer);
+            }
+            else
+            {
+                meshContainer = node; // hoist directly onto root
+            }
+
+            if (objMeshes.Length > 1)
+                for (int i = 0; i < objMeshes.Length; i++)
+                {
+                    if (string.IsNullOrEmpty(objMeshes[i]) || objMeshes[i].StartsWith('?'))
+                        continue;
+
+                    meshContainer.Children.Add(new AssetNode
+                    {
+                        Icon = "▫",
+                        Label = Path.GetFileNameWithoutExtension(objMeshes[i]),
+                        AssetData = new AssetData
+                        {
+                            MeshPaths = [objMeshes[i]],
+                            TexturePaths = [objTextures[i]],
+                            Motions = motions,
+                            Asb = [objAsb[i]],
+                            Adb = [objAdb[i]],
+                        }
+                    });
+                }
+        }
+
+        // ── Effect Nodes ──────────────────────────────────────────────────
+        if (hasEfx)
+        {
+            AssetNode efxContainer;
+            if (grouped)
+            {
+                efxContainer = new AssetNode
+                {
+                    Icon = "✨",
+                    Label = npc.Effect,
+                    AssetData = new AssetData
+                    {
+                        MeshPaths = efxMeshes,
+                        TexturePaths = efxTextures,
+                        Asb = efxAsb,
+                        Adb = efxAdb,
+                    }
+                };
+                node.Children.Add(efxContainer);
+            }
+            else
+            {
+                efxContainer = node; // hoist directly onto root
+            }
+
+            if (efxMeshes.Length > 1)
+                for (int i = 0; i < efxMeshes.Length; i++)
+                {
+                    if (efxMeshes[i].StartsWith('?')) continue;
+
+                    efxContainer.Children.Add(new AssetNode
+                    {
+                        Icon = "▫",
+                        Label = Path.GetFileNameWithoutExtension(efxMeshes[i]),
+                        AssetData = new AssetData
+                        {
+                            MeshPaths = [efxMeshes[i]],
+                            TexturePaths = [efxTextures[i]],
+                            Asb = [efxAsb[i]],
+                            Adb = [efxAdb[i]],
+                        }
+                    });
+                }
         }
 
         return node;
@@ -424,24 +520,25 @@ public class WorkspaceViewModel : ViewModelBase
             }
         };
 
-        for (int i = 0; i < obj.Parts; i++)
-        {
-            if (string.IsNullOrEmpty(meshPaths[i]) || meshPaths[i].StartsWith('?'))
-                continue;
-
-            node.Children.Add(new AssetNode
+        if (obj.Parts > 1)
+            for (int i = 0; i < obj.Parts; i++)
             {
-                Icon = "🔷",
-                Label = $"Part {i} — {Path.GetFileName(meshPaths[i])}",
-                AssetData = new AssetData
+                if (string.IsNullOrEmpty(meshPaths[i]) || meshPaths[i].StartsWith('?'))
+                    continue;
+
+                node.Children.Add(new AssetNode
                 {
-                    MeshPaths = [meshPaths[i]],
-                    TexturePaths = [texturePaths[i]],
-                    Asb = [asb[i]],
-                    Adb = [adb[i]],
-                }
-            });
-        }
+                    Icon = "🔷",
+                    Label = Path.GetFileNameWithoutExtension(meshPaths[i]),
+                    AssetData = new AssetData
+                    {
+                        MeshPaths = [meshPaths[i]],
+                        TexturePaths = [texturePaths[i]],
+                        Asb = [asb[i]],
+                        Adb = [adb[i]],
+                    }
+                });
+            }
 
         return node;
     }
@@ -458,10 +555,7 @@ public class WorkspaceViewModel : ViewModelBase
 
     private AssetNode BuildEffectNode(C3DEffectInfo effect)
     {
-        var label = effect.Lev > 0
-            ? $"[{effect.Key}]  Lev {effect.Lev}"
-            : $"[{effect.Key}]";
-
+        var label = effect.Key;
         var meshPaths = new string[effect.Amount];
         var texPaths = new string[effect.Amount];
         var asbArr = new int[effect.Amount];
@@ -492,23 +586,24 @@ public class WorkspaceViewModel : ViewModelBase
                 : null
         };
 
-        for (int i = 0; i < effect.Amount; i++)
-        {
-            if (meshPaths[i].StartsWith('?')) continue;
-
-            node.Children.Add(new AssetNode
+        if (effect.Amount > 1)
+            for (int i = 0; i < effect.Amount; i++)
             {
-                Icon = "▫",
-                Label = $"Slot {i} — EfxId {effect.EffectIds[i]}  ·  {Path.GetFileName(texPaths[i])}",
-                AssetData = new AssetData
+                if (meshPaths[i].StartsWith('?')) continue;
+
+                node.Children.Add(new AssetNode
                 {
-                    MeshPaths = [meshPaths[i]],
-                    TexturePaths = [texPaths[i]],
-                    Asb = [asbArr[i]],
-                    Adb = [adbArr[i]],
-                }
-            });
-        }
+                    Icon = "▫",
+                    Label = Path.GetFileNameWithoutExtension(meshPaths[i]),
+                    AssetData = new AssetData
+                    {
+                        MeshPaths = [meshPaths[i]],
+                        TexturePaths = [texPaths[i]],
+                        Asb = [asbArr[i]],
+                        Adb = [adbArr[i]],
+                    }
+                });
+            }
 
         return node;
     }
@@ -602,24 +697,25 @@ public class WorkspaceViewModel : ViewModelBase
             }
         };
 
-        for (int i = 0; i < armor.Parts; i++)
-        {
-            if (string.IsNullOrEmpty(meshPaths[i]) || meshPaths[i].StartsWith('?'))
-                continue;
-
-            node.Children.Add(new AssetNode
+        if (armor.Parts > 1)
+            for (int i = 0; i < armor.Parts; i++)
             {
-                Icon = "🔷",
-                Label = $"Part {i} — {Path.GetFileName(meshPaths[i])}",
-                AssetData = new AssetData
+                if (string.IsNullOrEmpty(meshPaths[i]) || meshPaths[i].StartsWith('?'))
+                    continue;
+
+                node.Children.Add(new AssetNode
                 {
-                    MeshPaths = [meshPaths[i]],
-                    TexturePaths = [texturePaths[i]],
-                    Asb = [asb[i]],
-                    Adb = [adb[i]],
-                }
-            });
-        }
+                    Icon = "🔷",
+                    Label = Path.GetFileNameWithoutExtension(meshPaths[i]),
+                    AssetData = new AssetData
+                    {
+                        MeshPaths = [meshPaths[i]],
+                        TexturePaths = [texturePaths[i]],
+                        Asb = [asb[i]],
+                        Adb = [adb[i]],
+                    }
+                });
+            }
 
         return node;
     }
@@ -705,24 +801,25 @@ public class WorkspaceViewModel : ViewModelBase
             }
         };
 
-        for (int i = 0; i < armet.Parts; i++)
-        {
-            if (string.IsNullOrEmpty(meshPaths[i]) || meshPaths[i].StartsWith('?'))
-                continue;
-
-            node.Children.Add(new AssetNode
+        if (armet.Parts > 1)
+            for (int i = 0; i < armet.Parts; i++)
             {
-                Icon = "🔷",
-                Label = $"Part {i} — {Path.GetFileName(meshPaths[i])}",
-                AssetData = new AssetData
+                if (string.IsNullOrEmpty(meshPaths[i]) || meshPaths[i].StartsWith('?'))
+                    continue;
+
+                node.Children.Add(new AssetNode
                 {
-                    MeshPaths = [meshPaths[i]],
-                    TexturePaths = [texturePaths[i]],
-                    Asb = [asb[i]],
-                    Adb = [adb[i]],
-                }
-            });
-        }
+                    Icon = "🔷",
+                    Label = Path.GetFileNameWithoutExtension(meshPaths[i]),
+                    AssetData = new AssetData
+                    {
+                        MeshPaths = [meshPaths[i]],
+                        TexturePaths = [texturePaths[i]],
+                        Asb = [asb[i]],
+                        Adb = [adb[i]],
+                    }
+                });
+            }
 
         return node;
     }
@@ -844,24 +941,25 @@ public class WorkspaceViewModel : ViewModelBase
             }
         };
 
-        for (int i = 0; i < weapon.Parts; i++)
-        {
-            if (string.IsNullOrEmpty(meshPaths[i]) || meshPaths[i].StartsWith('?'))
-                continue;
-
-            node.Children.Add(new AssetNode
+        if (weapon.Parts > 1)
+            for (int i = 0; i < weapon.Parts; i++)
             {
-                Icon = "🔷",
-                Label = $"Part {i} — {Path.GetFileName(meshPaths[i])}",
-                AssetData = new AssetData
+                if (string.IsNullOrEmpty(meshPaths[i]) || meshPaths[i].StartsWith('?'))
+                    continue;
+
+                node.Children.Add(new AssetNode
                 {
-                    MeshPaths = [meshPaths[i]],
-                    TexturePaths = [texturePaths[i]],
-                    Asb = [asb[i]],
-                    Adb = [adb[i]],
-                }
-            });
-        }
+                    Icon = "🔷",
+                    Label = Path.GetFileNameWithoutExtension(meshPaths[i]),
+                    AssetData = new AssetData
+                    {
+                        MeshPaths = [meshPaths[i]],
+                        TexturePaths = [texturePaths[i]],
+                        Asb = [asb[i]],
+                        Adb = [adb[i]],
+                    }
+                });
+            }
 
         return node;
     }
@@ -965,24 +1063,25 @@ public class WorkspaceViewModel : ViewModelBase
             }
         };
 
-        for (int i = 0; i < mount.Parts; i++)
-        {
-            if (string.IsNullOrEmpty(meshPaths[i]) || meshPaths[i].StartsWith('?'))
-                continue;
-
-            node.Children.Add(new AssetNode
+        if (mount.Parts > 1)
+            for (int i = 0; i < mount.Parts; i++)
             {
-                Icon = "🔷",
-                Label = $"Part {i} — {Path.GetFileName(meshPaths[i])}",
-                AssetData = new AssetData
+                if (string.IsNullOrEmpty(meshPaths[i]) || meshPaths[i].StartsWith('?'))
+                    continue;
+
+                node.Children.Add(new AssetNode
                 {
-                    MeshPaths = [meshPaths[i]],
-                    TexturePaths = [texturePaths[i]],
-                    Asb = [asb[i]],
-                    Adb = [adb[i]],
-                }
-            });
-        }
+                    Icon = "🔷",
+                    Label = Path.GetFileNameWithoutExtension(meshPaths[i]),
+                    AssetData = new AssetData
+                    {
+                        MeshPaths = [meshPaths[i]],
+                        TexturePaths = [texturePaths[i]],
+                        Asb = [asb[i]],
+                        Adb = [adb[i]],
+                    }
+                });
+            }
 
         return node;
     }
@@ -1145,7 +1244,7 @@ public class WorkspaceViewModel : ViewModelBase
         {
             var meshes = new[] { obj };
             var asb = new[] { 5 };
-            var adb = new[] { 2 };           
+            var adb = new[] { 2 };
             return (meshes, asb, adb);
         }
 
