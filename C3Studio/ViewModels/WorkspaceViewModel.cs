@@ -307,6 +307,7 @@ public class WorkspaceViewModel : ViewModelBase
             await _gameData.LoadAsync(_settings.ConquerPath);
             BuildAssetTree();
             StatusMessage = $"Ready — {_gameData.Npcs.Count} NPCs, {_gameData.SimpleObjs.Count} objects, " +
+                            $"{_gameData.SimpleRoles.Count} roles, " +
                             $"{_gameData.Effects.Count} effects, {_gameData.Armors.Count} armors, " +
                             $"{_gameData.Armets.Count} armets, {_gameData.Weapons.Count} weapons, " +
                             $"{_gameData.Transforms.Count} transforms, {_gameData.Mounts.Count} mounts, " +
@@ -333,6 +334,7 @@ public class WorkspaceViewModel : ViewModelBase
         AssetTree.Clear();
         AssetTree.Add(BuildNpcRoot());
         AssetTree.Add(BuildSimpleObjRoot());
+        AssetTree.Add(BuildSimpleRoleRoot());
         AssetTree.Add(BuildEffectRoot());
         AssetTree.Add(BuildArmorRoot());
         AssetTree.Add(BuildArmetRoot());
@@ -1184,6 +1186,307 @@ public class WorkspaceViewModel : ViewModelBase
         }
 
         return parentNode;
+    }
+
+    // ── SimpleRole  tree  ────────────────────────────────────────────────────
+
+    private AssetNode BuildSimpleRoleRoot()
+    {
+        var root = new AssetNode { Icon = "🧑", Label = $"Simple Roles ({_gameData.SimpleRoles.Count})" };
+        foreach (var role in _gameData.SimpleRoles)
+            root.Children.Add(BuildSimpleRoleNode(role));
+        return root;
+    }
+
+    private AssetNode BuildSimpleRoleNode(SimpleRoleTypeInfo role)
+    {
+        var motions = new List<MotionData>();
+
+        // ── Resolve each section independently ───────────────────────────
+        string[] bodyMeshes = [], bodyTextures = [];
+        int[] bodyAsb = [], bodyAdb = [];
+
+        // Hair is its own visual section for equipment-based roles
+        string[] hairMeshes = [], hairTextures = [];
+        int[] hairAsb = [], hairAdb = [];
+
+        if (role.IsSimpleObjRole)
+        {
+            var obj = _gameData.FindSimpleObj(role.SimpleObjId);
+            if (obj != null)
+                (bodyMeshes, bodyTextures, bodyAsb, bodyAdb) = BuildMeshArrays(obj);
+
+            TryAddMotion(motions, "StandBy", role.StandByMotionId);
+            TryAddMotion(motions, "Blaze", role.BlazeMotionId);
+        }
+        else if (role.IsEquipmentRole)
+        {
+            // ── Body (Armor) ──────────────────────────────────────────────
+            // Lookup order (first hit wins):
+            //   1. RawArmorId       — as stored in the ini, e.g. 3135990
+            //   2. EffectiveArmorId — look-rebound: look*1_000_000 + (raw%1_000_000)/10*10
+            //   3. look * 1_000_000 — naked body fallback (SetLook default)
+            var armor = _gameData.FindArmor(role.RawArmorId)
+                     ?? _gameData.FindArmor(role.EffectiveArmorId)
+                     ?? (role.RawArmorId != 0 ? _gameData.FindArmor((uint)(role.Look * 1_000_000)) : null);
+            if (armor != null)
+                (bodyMeshes, bodyTextures, bodyAsb, bodyAdb) = BuildMeshArraysForArmor(armor);
+
+            // ── Hair (Armet) ──────────────────────────────────────────────
+            // Lookup order (first hit wins):
+            //   1. RawHairId        — as stored in the ini, e.g. 3119524
+            //   2. EffectiveHairId  — look-rebound: look*1_000_000 + (raw%1_000_000)/10*10
+            //   No fallback — bare head is valid when both lookups fail.
+            if (role.RawHairId != 0)
+            {
+                var armet = _gameData.FindArmet(role.RawHairId)
+                         ?? _gameData.FindArmet(role.EffectiveHairId);
+                if (armet != null)
+                    (hairMeshes, hairTextures, hairAsb, hairAdb) = BuildMeshArraysForArmet(armet);
+            }
+
+            // ── Look-based motions ─────────────────────────────────────────
+            // Mirrors C3DRole::SetAction: idBodyMotion = look * 1_000_000 + actionType
+            // 100 = StandBy,  110 = Walk,  130 = Jump (C3DRole action constants)
+            TryAddMotion(motions, "StandBy", (ulong)(role.Look * 1_000_000 + 100));
+            TryAddMotion(motions, "Walk", (ulong)(role.Look * 1_000_000 + 110));
+            TryAddMotion(motions, "Jump", (ulong)(role.Look * 1_000_000 + 130));
+        }
+
+        string[] fxfMeshes = [], fxfTextures = [], fxbMeshes = [], fxbTextures = [];
+        int[] fxfAsb = [], fxfAdb = [], fxbAsb = [], fxbAdb = [];
+
+        if (!string.IsNullOrEmpty(role.FEffect))
+            (fxfMeshes, fxfTextures, fxfAsb, fxfAdb) = BuildEffectParts(role.FEffect);
+
+        if (!string.IsNullOrEmpty(role.BEffect))
+            (fxbMeshes, fxbTextures, fxbAsb, fxbAdb) = BuildEffectParts(role.BEffect);
+
+        // ── Combine all sections for the root AssetData ───────────────────
+        var allMeshes = bodyMeshes.Concat(hairMeshes).Concat(fxfMeshes).Concat(fxbMeshes).ToArray();
+        var allTextures = bodyTextures.Concat(hairTextures).Concat(fxfTextures).Concat(fxbTextures).ToArray();
+        var allAsb = bodyAsb.Concat(hairAsb).Concat(fxfAsb).Concat(fxbAsb).ToArray();
+        var allAdb = bodyAdb.Concat(hairAdb).Concat(fxfAdb).Concat(fxbAdb).ToArray();
+        var motionArr = motions.ToArray();
+
+        var node = new AssetNode
+        {
+            Icon = "🧑",
+            Label = role.Key,
+        };
+
+        if (allMeshes.Length > 0 || motionArr.Length > 0)
+        {
+            node.AssetData = new AssetData
+            {
+                MeshPaths = allMeshes,
+                TexturePaths = allTextures,
+                Motions = motionArr,
+                Asb = allAsb,
+                Adb = allAdb,
+            };
+        }
+
+        // ── Determine which sections are non-empty for grouping logic ─────
+        bool hasBody = bodyMeshes.Length > 0;
+        bool hasHair = hairMeshes.Length > 0;
+        bool hasFxF = fxfMeshes.Length > 0;
+        bool hasFxB = fxbMeshes.Length > 0;
+        bool hasFx = hasFxF || hasFxB;
+        // Group into named containers when there are two or more non-empty sections
+        int sectionCount = (hasBody ? 1 : 0) + (hasHair ? 1 : 0) + (hasFxF ? 1 : 0) + (hasFxB ? 1 : 0);
+        bool grouped = sectionCount >= 2;
+
+        // ── Body section ──────────────────────────────────────────────────
+        if (hasBody)
+        {
+            AssetNode bodyContainer;
+            if (grouped)
+            {
+                var bodyLabel = role.IsSimpleObjRole
+                    ? $"{role.SimpleObjId}"
+                    : $"[{role.EffectiveArmorId}] {GetLookLabel(role.Look)}";
+
+                bodyContainer = new AssetNode
+                {
+                    Icon = "🔷",
+                    Label = bodyLabel,
+                    AssetData = new AssetData
+                    {
+                        MeshPaths = bodyMeshes,
+                        TexturePaths = bodyTextures,
+                        Motions = motionArr,
+                        Asb = bodyAsb,
+                        Adb = bodyAdb,
+                    }
+                };
+                node.Children.Add(bodyContainer);
+            }
+            else
+            {
+                bodyContainer = node;   // hoist directly onto root
+            }
+
+            if (bodyMeshes.Length > 1)
+                for (int i = 0; i < bodyMeshes.Length; i++)
+                {
+                    if (string.IsNullOrEmpty(bodyMeshes[i]) || bodyMeshes[i].StartsWith('?')) continue;
+
+                    bodyContainer.Children.Add(new AssetNode
+                    {
+                        Icon = "▫",
+                        Label = Path.GetFileNameWithoutExtension(bodyMeshes[i]),
+                        AssetData = new AssetData
+                        {
+                            MeshPaths = [bodyMeshes[i]],
+                            TexturePaths = [bodyTextures[i]],
+                            Motions = motionArr,
+                            Asb = [bodyAsb[i]],
+                            Adb = [bodyAdb[i]],
+                        }
+                    });
+                }
+        }
+
+        // ── Hair section (equipment roles only) ───────────────────────────
+        if (hasHair)
+        {
+            AssetNode hairContainer;
+            if (grouped)
+            {
+                // Label mirrors the armet ID that was resolved: e.g. "[3119520] Hair"
+                hairContainer = new AssetNode
+                {
+                    Icon = "💇",
+                    Label = $"[{role.EffectiveHairId}] Hair",
+                    AssetData = new AssetData
+                    {
+                        MeshPaths = hairMeshes,
+                        TexturePaths = hairTextures,
+                        Motions = motionArr,
+                        Asb = hairAsb,
+                        Adb = hairAdb,
+                    }
+                };
+                node.Children.Add(hairContainer);
+            }
+            else
+            {
+                hairContainer = node;
+            }
+
+            if (hairMeshes.Length > 1)
+                for (int i = 0; i < hairMeshes.Length; i++)
+                {
+                    if (string.IsNullOrEmpty(hairMeshes[i]) || hairMeshes[i].StartsWith('?')) continue;
+
+                    hairContainer.Children.Add(new AssetNode
+                    {
+                        Icon = "▫",
+                        Label = Path.GetFileNameWithoutExtension(hairMeshes[i]),
+                        AssetData = new AssetData
+                        {
+                            MeshPaths = [hairMeshes[i]],
+                            TexturePaths = [hairTextures[i]],
+                            Motions = motionArr,
+                            Asb = [hairAsb[i]],
+                            Adb = [hairAdb[i]],
+                        }
+                    });
+                }
+        }
+
+        // ── Front effect section ──────────────────────────────────────────
+        if (hasFxF)
+        {
+            AssetNode fxfContainer;
+            if (grouped)
+            {
+                fxfContainer = new AssetNode
+                {
+                    Icon = "✨",
+                    Label = role.FEffect,
+                    AssetData = new AssetData
+                    {
+                        MeshPaths = fxfMeshes,
+                        TexturePaths = fxfTextures,
+                        Asb = fxfAsb,
+                        Adb = fxfAdb,
+                    }
+                };
+                node.Children.Add(fxfContainer);
+            }
+            else
+            {
+                fxfContainer = node;
+            }
+
+            if (fxfMeshes.Length > 1)
+                for (int i = 0; i < fxfMeshes.Length; i++)
+                {
+                    if (fxfMeshes[i].StartsWith('?')) continue;
+
+                    fxfContainer.Children.Add(new AssetNode
+                    {
+                        Icon = "▫",
+                        Label = Path.GetFileNameWithoutExtension(fxfMeshes[i]),
+                        AssetData = new AssetData
+                        {
+                            MeshPaths = [fxfMeshes[i]],
+                            TexturePaths = [fxfTextures[i]],
+                            Asb = [fxfAsb[i]],
+                            Adb = [fxfAdb[i]],
+                        }
+                    });
+                }
+        }
+
+        // ── Back effect section ───────────────────────────────────────────
+        if (hasFxB)
+        {
+            AssetNode fxbContainer;
+            if (grouped)
+            {
+                fxbContainer = new AssetNode
+                {
+                    Icon = "✨",
+                    Label = role.BEffect,
+                    AssetData = new AssetData
+                    {
+                        MeshPaths = fxbMeshes,
+                        TexturePaths = fxbTextures,
+                        Asb = fxbAsb,
+                        Adb = fxbAdb,
+                    }
+                };
+                node.Children.Add(fxbContainer);
+            }
+            else
+            {
+                fxbContainer = node;
+            }
+
+            if (fxbMeshes.Length > 1)
+                for (int i = 0; i < fxbMeshes.Length; i++)
+                {
+                    if (fxbMeshes[i].StartsWith('?')) continue;
+
+                    fxbContainer.Children.Add(new AssetNode
+                    {
+                        Icon = "▫",
+                        Label = Path.GetFileNameWithoutExtension(fxbMeshes[i]),
+                        AssetData = new AssetData
+                        {
+                            MeshPaths = [fxbMeshes[i]],
+                            TexturePaths = [fxbTextures[i]],
+                            Asb = [fxbAsb[i]],
+                            Adb = [fxbAdb[i]],
+                        }
+                    });
+                }
+        }
+
+        return node;
     }
 
     /// <summary>

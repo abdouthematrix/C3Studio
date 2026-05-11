@@ -15,6 +15,7 @@ public interface IGameDataService
     IReadOnlyList<TransformInfo> Transforms { get; }
     IReadOnlyList<MountTypeInfo> Mounts { get; }
     IReadOnlyList<ItemTextureInfo> ItemTextures { get; }
+    IReadOnlyList<SimpleRoleTypeInfo> SimpleRoles { get; }      // ← NEW
     IReadOnlyDictionary<ulong, string> MeshMap { get; }
     IReadOnlyDictionary<ulong, string> TextureMap { get; }
     IReadOnlyDictionary<ulong, string> MotionMap { get; }
@@ -43,6 +44,7 @@ public interface IGameDataService
     WeaponTypeInfo? FindWeapon(uint id);
     TransformInfo? FindTransform(int index);
     ItemTextureInfo? FindItemTexture(uint id);
+    SimpleRoleTypeInfo? FindSimpleRole(int index);              // ← NEW
     uint ResolveItemTexture(uint itemId, ItemColor color);
     uint ResolveItemTexture(uint itemId, byte colorValue);
 }
@@ -58,6 +60,7 @@ public class GameDataService : IGameDataService
     private List<TransformInfo> _transforms = new();
     private List<MountTypeInfo> _mounts = new();
     private List<ItemTextureInfo> _itemTextures = new();
+    private List<SimpleRoleTypeInfo> _simpleRoles = new();      // ← NEW
     private Dictionary<ulong, string> _mesh = new();
     private Dictionary<ulong, string> _tex = new();
     private Dictionary<ulong, string> _motion = new();
@@ -74,6 +77,7 @@ public class GameDataService : IGameDataService
     public IReadOnlyList<TransformInfo> Transforms => _transforms;
     public IReadOnlyList<MountTypeInfo> Mounts => _mounts;
     public IReadOnlyList<ItemTextureInfo> ItemTextures => _itemTextures;
+    public IReadOnlyList<SimpleRoleTypeInfo> SimpleRoles => _simpleRoles;   // ← NEW
 
     public IReadOnlyDictionary<ulong, string> MeshMap => _mesh;
     public IReadOnlyDictionary<ulong, string> TextureMap => _tex;
@@ -109,6 +113,7 @@ public class GameDataService : IGameDataService
                                   .ToList();
         _mounts = MountIniParser.Parse(Ini("Mount.ini"));
         _itemTextures = ItemTextureIniParser.Parse(Ini("ItemTexture.ini"));
+        _simpleRoles = SimpleRoleIniParser.Parse(Ini("3DSimpleRole.ini"));  // ← NEW
 
         _mesh = Cast(ResIniParser.Parse(Ini("3dobj.ini")));
         _tex = Cast(ResIniParser.Parse(Ini("3dtexture.ini")));
@@ -141,6 +146,15 @@ public class GameDataService : IGameDataService
                 && MotionMap.TryGetValue(key2, out var path2))
                 return path2;
         }
+        if (s.Length == 7)
+        {
+            var stripped = s.Insert(4, "0");
+            if (ulong.TryParse(stripped, out var key2)
+                && MotionMap.TryGetValue(key2, out var path2))
+                return path2;
+        }
+
+
         return null;
     }
 
@@ -251,6 +265,13 @@ public class GameDataService : IGameDataService
     public ItemTextureInfo? FindItemTexture(uint id)
     {
         foreach (var it in ItemTextures) if (it.Id == id) return it;
+        return null;
+    }
+
+    /// <summary>Looks up a simple role by its numeric index (e.g. 0, 100).</summary>
+    public SimpleRoleTypeInfo? FindSimpleRole(int index)                    // ← NEW
+    {
+        foreach (var r in SimpleRoles) if (r.Index == index) return r;
         return null;
     }
 
