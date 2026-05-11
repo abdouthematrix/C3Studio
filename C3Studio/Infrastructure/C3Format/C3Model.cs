@@ -207,11 +207,12 @@ public partial class C3Model
             var src = LoadFromStream(stream);
             if (src.Motions.Count == 0) return;
 
-            for (int i = 0; i < Phys.Count; i++)
+            for (int i = 0; i < Motions.Count; i++)
             {
-                if (Phys[i].PartIndex == index)
-                    Phys[i].Motion = src.Motions[i];
+                if (Motions[i].PartIndex == index)
+                    Motions[i] = src.Motions[i];
             }
+
         }
        
 
@@ -263,13 +264,19 @@ public partial class C3Model
         for (int i = 0; i < model.Phys.Count; i++)
         {
             if (i < model.Motions.Count)
+            {
                 model.Phys[i].Motion = model.Motions[i];
+                if (model.Phys[i].Motion != null)
+                    model.Phys[i].Motion.PartIndex = model.Phys[i].PartIndex;
+            }
             else
             {
                 var stub = new C3Motion { BoneCount = 1, FrameCount = 1 };
                 stub.BoneMatrix.Add(Matrix.Identity);
                 stub.KeyFrames.Add(new C3KeyFrame { Pos = 0, BoneMatrices = { Matrix.Identity } });
                 model.Phys[i].Motion = stub;
+                if (model.Phys[i].Motion != null)
+                    model.Phys[i].Motion.PartIndex = model.Phys[i].PartIndex;
             }
             if (rotation.HasValue)
             { model.Phys[i].Motion!.ClearMatrix(); model.Phys[i].Motion!.Multiply(-1, rotation.Value); }
