@@ -279,15 +279,28 @@ public class C3Renderer : IDisposable
             _gd.RasterizerState = phy.TwoSided
                 ? RasterizerState.CullNone
                 : RasterizerState.CullClockwise;
-            _gd.BlendState = ResolveBlendState(phy.BlendAsb, phy.BlendAdb);
-            SetPhyAlphaEffect(rd);
+            _gd.BlendState = ResolveBlendState(phy.BlendAsb, phy.BlendAdb);           
             _gd.SetVertexBuffer(rd.VertexBuffer);
             _gd.Indices = rd.IndexBuffer;
-            foreach (var pass in _alphaTestEffect.CurrentTechnique.Passes)
+            if (rd.Texture != null)
             {
-                pass.Apply();
-                _gd.DrawIndexedPrimitives(PrimitiveType.TriangleList, 0, 0, phy.NormalTriCount);
+                SetPhyAlphaEffect(rd);
+                foreach (var pass in _alphaTestEffect.CurrentTechnique.Passes)
+                {
+                    pass.Apply();
+                    _gd.DrawIndexedPrimitives(PrimitiveType.TriangleList, 0, 0, phy.NormalTriCount);
+                }
             }
+            else
+            {
+                SetPhyEffect(rd);
+                foreach (var pass in _effect.CurrentTechnique.Passes)
+                {
+                    pass.Apply();
+                    _gd.DrawIndexedPrimitives(PrimitiveType.TriangleList, 0, 0, phy.NormalTriCount);
+                }
+            }
+            
         }
 
         // ── Alpha / semi-transparent pass ─────────────────────────────────
@@ -303,16 +316,30 @@ public class C3Renderer : IDisposable
             _gd.RasterizerState = phy.TwoSided
                 ? RasterizerState.CullNone
                 : RasterizerState.CullClockwise;                
-            _gd.BlendState = ResolveBlendState(phy.BlendAsb, phy.BlendAdb);
-            SetPhyAlphaEffect(rd);
+            _gd.BlendState = ResolveBlendState(phy.BlendAsb, phy.BlendAdb);            
             _gd.SetVertexBuffer(rd.VertexBuffer);
             _gd.Indices = rd.IndexBuffer;
-            foreach (var pass in _alphaTestEffect.CurrentTechnique.Passes)
+            if (rd.Texture != null)
             {
-                pass.Apply();
-                if (tn) _gd.DrawIndexedPrimitives(PrimitiveType.TriangleList, 0, 0, phy.NormalTriCount);
-                if (at) _gd.DrawIndexedPrimitives(PrimitiveType.TriangleList, 0, phy.AlphaIndexStart, phy.AlphaTriCount);
+                SetPhyAlphaEffect(rd);
+                foreach (var pass in _alphaTestEffect.CurrentTechnique.Passes)
+                {
+                    pass.Apply();
+                    if (tn) _gd.DrawIndexedPrimitives(PrimitiveType.TriangleList, 0, 0, phy.NormalTriCount);
+                    if (at) _gd.DrawIndexedPrimitives(PrimitiveType.TriangleList, 0, phy.AlphaIndexStart, phy.AlphaTriCount);
+                }
             }
+            else
+            {
+                SetPhyEffect(rd);
+                foreach (var pass in _effect.CurrentTechnique.Passes)
+                {
+                    pass.Apply();
+                    if (tn) _gd.DrawIndexedPrimitives(PrimitiveType.TriangleList, 0, 0, phy.NormalTriCount);
+                    if (at) _gd.DrawIndexedPrimitives(PrimitiveType.TriangleList, 0, phy.AlphaIndexStart, phy.AlphaTriCount);
+                }
+            }
+            
         }
     }
 

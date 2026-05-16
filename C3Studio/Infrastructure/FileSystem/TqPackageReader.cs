@@ -1,3 +1,4 @@
+using C3Studio.Core.Models;
 using SevenZipExtractor;
 using System.IO;
 
@@ -22,6 +23,26 @@ public sealed class TqPackageReader : IPackageReader
     // ── State ────────────────────────────────────────────────────────────
     private readonly Dictionary<string, IPackageReader> _packages = new(StringComparer.OrdinalIgnoreCase);
     private readonly string _conquerDirectory;
+
+    // Assuming _packages is Dictionary<string, IPackageReader>
+    public Dictionary<string, List<WdfEntry>> WdfEntries
+    {
+        get
+        {
+            var result = new Dictionary<string, List<WdfEntry>>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var kvp in _packages)
+            {
+                string packageKey = kvp.Key;                  // the package name/key
+                WdfPackageReader reader = kvp.Value as WdfPackageReader;            // the package reader
+                List<WdfEntry> entries = reader.Entries.ToList(); // entries inside this package
+
+                result[packageKey] = entries;
+            }
+
+            return result;
+        }
+    }
 
     // ── Constructor ──────────────────────────────────────────────────────
 
@@ -123,5 +144,18 @@ public sealed class TqPackageReader : IPackageReader
         // Plain file – read entirely into memory so the FileStream can be closed
         var buffer = File.ReadAllBytes(path);
         return new MemoryStream(buffer, writable: false);
+    }
+
+    public byte[]? ReadHeader(string packageKey, uint fileId, int maxBytes)
+    {
+        if (_packages.TryGetValue(packageKey, out var package))
+            return package.ReadHeader(fileId, maxBytes);
+
+        throw new FileNotFoundException($"Asset not found: {fileId}");
+    }
+
+    public byte[]? ReadHeader(uint fileId, int maxBytes)
+    {
+        throw new NotImplementedException();
     }
 }

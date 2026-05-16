@@ -6,4 +6,5 @@ public interface IPackageReader : IDisposable
 {
     void   AddPackage(string fileName);
     Stream LoadFile(string fileName);
+    byte[]? ReadHeader(uint fileId, int maxBytes);
 }

@@ -144,7 +144,7 @@ public class C3Ptcl : IDisposable
     /// Blend state is resolved from <see cref="BlendAsb"/>/<see cref="BlendAdb"/>
     /// unless <paramref name="blendOverride"/> is provided.
     /// </summary>
-    public void Draw(GraphicsDevice gd, AlphaTestEffect effect,
+    public void Draw(GraphicsDevice gd, AlphaTestEffect alphaTestEffect,
                      Matrix view, Matrix projection,
                      BlendState? blendOverride = null)
     {
@@ -172,7 +172,7 @@ public class C3Ptcl : IDisposable
 
             Vector3 vpos = Vector3.Transform(frame.Positions![n], xform);
             float s = frame.Sizes![n];
-            
+
             Vector3 rotatedRight = new Vector3(s, 0, 0);
             Vector3 rotatedUp = new Vector3(0, s, 0);
             Color color = Color.White;
@@ -259,20 +259,42 @@ public class C3Ptcl : IDisposable
         gd.RasterizerState = RasterizerState.CullNone;
         gd.SamplerStates[0] = SamplerState.LinearWrap;
 
-        effect.View = Matrix.Identity;
-        effect.Projection = projection;
-        effect.World = Matrix.Identity;   // ← was Matrix.Invert(view), which is wrong in MonoGame
-        effect.Texture = tex;
-        effect.VertexColorEnabled = true;
-
-        foreach (var pass in effect.CurrentTechnique.Passes)
+        if (tex != null)
         {
-            pass.Apply();
-            gd.DrawUserIndexedPrimitives(
-                PrimitiveType.TriangleList,
-                _vb, 0, frame.Count * 4,
-                _ib, 0, frame.Count * 2);
+            alphaTestEffect.View = Matrix.Identity;
+            alphaTestEffect.Projection = projection;
+            alphaTestEffect.World = Matrix.Identity;   // ← was Matrix.Invert(view), which is wrong in MonoGame
+            alphaTestEffect.Texture = tex;
+            alphaTestEffect.VertexColorEnabled = true;
+
+            foreach (var pass in alphaTestEffect.CurrentTechnique.Passes)
+            {
+                pass.Apply();
+                gd.DrawUserIndexedPrimitives(
+                    PrimitiveType.TriangleList,
+                    _vb, 0, frame.Count * 4,
+                    _ib, 0, frame.Count * 2);
+            }
         }
+        else
+        {     
+            var effect = new BasicEffect(gd)
+            { LightingEnabled = false, VertexColorEnabled = true, TextureEnabled = false };
+            effect.View = Matrix.Identity;
+            effect.Projection = projection;
+            effect.World = Matrix.Identity;
+            effect.Texture = null;
+            effect.VertexColorEnabled = true;
+            foreach (var pass in effect.CurrentTechnique.Passes)
+            {
+                pass.Apply();
+                gd.DrawUserIndexedPrimitives(
+                    PrimitiveType.TriangleList,
+                    _vb, 0, frame.Count * 4,
+                    _ib, 0, frame.Count * 2);
+            }
+        }
+
     }
 
     // ── Animation control ─────────────────────────────────────────────────

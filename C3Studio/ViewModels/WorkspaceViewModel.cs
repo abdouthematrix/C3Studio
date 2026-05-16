@@ -1,8 +1,10 @@
 using C3Studio.Core.Models;
 using C3Studio.Core.Services;
+using C3Studio.Infrastructure.FileSystem;
 using C3Studio.MonoGame;
 using System.Collections.ObjectModel;
 using System.IO;
+using System.Text;
 using System.Windows.Forms;
 using System.Windows.Input;
 
@@ -342,6 +344,7 @@ public class WorkspaceViewModel : ViewModelBase
         AssetTree.Add(BuildTransformRoot());
         AssetTree.Add(BuildMountRoot());
         AssetTree.Add(BuildItemTextureRoot());
+        AssetTree.Add(BuildWdfRoot());
         RefreshFilter();
     }
 
@@ -1487,6 +1490,221 @@ public class WorkspaceViewModel : ViewModelBase
         }
 
         return node;
+    }
+
+    // ── WDF raw-entry tree ────────────────────────────────────────────────
+
+    /// <summary>
+    /// Lightweight file-type classifier derived from the first few magic bytes.
+    /// </summary>
+    public enum WdfFileType
+    {
+        Unknown,
+        DDS,
+        BMP,
+        PNG,
+        JPG,
+        TGA,
+        PVR,
+        MJP,
+        WAV,
+        C3,
+        INI,
+        Ani
+    }
+
+
+    public static WdfFileType DetectType(byte[]? header)
+    {
+        string str = Encoding.UTF8.GetString(header);
+        if (header == null || header.Length < 4) return WdfFileType.Unknown;
+
+        // DDS texture: magic "DDS "
+        if (header[0] == 0x44 && header[1] == 0x44 &&
+            header[2] == 0x53 && header[3] == 0x20) return WdfFileType.DDS;
+
+        // PNG: 0x89 50 4E 47
+        if (header[0] == 0x89 && header[1] == 0x50 &&
+            header[2] == 0x4E && header[3] == 0x47) return WdfFileType.PNG;
+
+        // JPG: FF D8 FF
+        if (header[0] == 0xFF && header[1] == 0xD8 &&
+            header[2] == 0xFF) return WdfFileType.JPG;
+
+        // BMP: "BM"
+        if (header[0] == 0x42 && header[1] == 0x4D) return WdfFileType.BMP;
+
+        // MJP: "MJP"
+        if (header[0] == 0x4D && header[1] == 0x4A && header[2] == 0x50) return WdfFileType.MJP;
+
+        // WAV: "RIFF....WAVE"
+        if (header.Length >= 12 &&
+            header[0] == 0x52 && header[1] == 0x49 &&
+            header[2] == 0x46 && header[3] == 0x46 &&
+            header[8] == 0x57 && header[9] == 0x41 &&
+            header[10] == 0x56 && header[11] == 0x45) return WdfFileType.WAV;
+
+        // ANI cursor: "RIFF....ACON"
+        if (header.Length >= 12 &&
+            header[0] == 0x52 && header[1] == 0x49 &&
+            header[2] == 0x46 && header[3] == 0x46 &&
+            header[8] == 0x41 && header[9] == 0x43 &&
+            header[10] == 0x4F && header[11] == 0x4E) return WdfFileType.Ani;
+
+        // PVR: "PVR!" at offset 44
+        if (header.Length >= 48 &&
+            header[44] == 0x50 && header[45] == 0x56 &&
+            header[46] == 0x52 && header[47] == 0x21) return WdfFileType.PVR;
+
+        // PVR v3 magic: 0x03525650
+        if (header.Length >= 4)
+        {
+            int v3magic = header[0] | (header[1] << 8) | (header[2] << 16) | (header[3] << 24);
+            if (v3magic == 0x03525650) return WdfFileType.PVR;
+        }
+
+        // C3 signature: "MAXFILE C3"
+        if (header.Length >= 10)
+        {
+            string sig = System.Text.Encoding.ASCII.GetString(header, 0, 10);
+            if (sig == "MAXFILE C3") return WdfFileType.C3;
+        }
+
+        // TGA: check image type + dimensions
+        if (header.Length >= 18)
+        {
+            byte imgType = header[2];
+            if (imgType == 2 || imgType == 10 || imgType == 3 || imgType == 11)
+            {
+                int w = header[12] | (header[13] << 8);
+                int h = header[14] | (header[15] << 8);
+                int bpp = header[16];
+                if (w > 0 && w < 8192 && h > 0 && h < 8192 &&
+                    (bpp == 8 || bpp == 16 || bpp == 24 || bpp == 32))
+                {
+                    return WdfFileType.TGA;
+                }
+            }
+        }
+
+        // INI heuristic: mostly printable text
+        if (header.Length >= 4)
+        {
+            int printable = 0;
+            int check = Math.Min(header.Length, 256);
+            for (int i = 0; i < check; i++)
+            {
+                byte b = header[i];
+                if ((b >= 0x20 && b <= 0x7E) || b == 0x0A || b == 0x0D || b == 0x09)
+                    printable++;
+            }
+            if ((double)printable / check > 0.85) return WdfFileType.INI;
+        }
+
+        return WdfFileType.Unknown;
+    }
+
+    private static (string icon, string label) WdfTypeLabel(WdfFileType t) => t switch
+    {
+        WdfFileType.C3 => ("📐", "C3 Models"),
+        WdfFileType.DDS => ("🖼", "DDS Textures"),
+        WdfFileType.Ani => ("🎞", "ANI Animations"),
+        WdfFileType.PNG => ("🖼", "PNG Images"),
+        WdfFileType.JPG => ("🖼", "JPEG Images"),
+        WdfFileType.BMP => ("🖼", "Bitmap Images"),
+        WdfFileType.MJP => ("🎬", "Motion JPEG"),
+        WdfFileType.WAV => ("🔊", "WAV Audio"),
+        WdfFileType.PVR => ("📦", "PVR Textures"),
+        WdfFileType.TGA => ("🖼", "TGA Images"),
+        WdfFileType.INI => ("📄", "INI Config"),
+        _ => ("❓", "Unknown"),
+    };
+
+
+    private AssetNode BuildWdfRoot()
+    {
+        var archives = _assets.WdfEntries;
+        var root = new AssetNode
+        {
+            Icon = "📦",
+            Label = $"WDF Archives ({archives.Count})"
+        };
+
+        foreach (var (archiveKey, wdf) in archives)
+        {
+            var archiveNode = new AssetNode
+            {
+                Icon = "🗜",
+                Label = $"{archiveKey}.wdf ({wdf.Count} entries)"
+            };
+
+            // Group by detected file type; classify via header bytes.
+            var byType = new Dictionary<WdfFileType, List<WdfEntry>>();
+            foreach (var entry in wdf)
+            {
+                var header = _assets.ReadHeader(archiveKey, entry.FileId, maxBytes: 16);
+                var fileType = DetectType(header);
+                if (!byType.TryGetValue(fileType, out var list))
+                    byType[fileType] = list = new List<WdfEntry>();
+                list.Add(entry);
+            }
+
+            foreach (var (fileType, entries) in byType.OrderBy(kv => kv.Key.ToString()))
+            {
+                var (icon, label) = WdfTypeLabel(fileType);
+
+                var typeNode = new AssetNode
+                {
+                    Icon = icon,
+                    Label = $"{label} ({entries.Count})"
+                };
+
+                foreach (var entry in entries/*.OrderBy(e => e.FileId)*/)
+                {
+                    // Build a virtual path: "<archiveKey>/<hex-hash>" so it is
+                    // routable through AssetFileService.Open() if ever needed.
+                    string virtualPath = $"{archiveKey}\\{entry.FileId:x8}";
+
+                    var entryNode = new AssetNode
+                    {
+                        Icon = icon,
+                        Label = $"{entry.FileId:x8}  ({entry.Size / 1024} KB)",
+                    };
+
+                    // For C3 entries wire up direct loading.
+                    if (fileType == WdfFileType.C3)
+                    {
+                        entryNode.AssetData = new AssetData
+                        {
+                            MeshPaths = [virtualPath],
+                            TexturePaths = [],
+                            Asb = [5],
+                            Adb = [6],
+                            Motions = [],
+                        };
+                    }
+                    if (fileType == WdfFileType.DDS)
+                    {
+                        entryNode.AssetData = new AssetData
+                        {
+                            MeshPaths = [],
+                            TexturePaths = [virtualPath],
+                            Asb = [5],
+                            Adb = [6],
+                            Motions = [],
+                        };
+                    }
+
+                    typeNode.Children.Add(entryNode);
+                }
+
+                archiveNode.Children.Add(typeNode);
+            }
+
+            root.Children.Add(archiveNode);
+        }
+
+        return root;
     }
 
     /// <summary>

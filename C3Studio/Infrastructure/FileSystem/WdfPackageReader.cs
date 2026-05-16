@@ -1,7 +1,13 @@
 using System.IO;
+using System.Security.Policy;
 using System.Text;
 
 namespace C3Studio.Infrastructure.FileSystem;
+
+/// <summary>
+/// Represents one entry in a WDF index table.
+/// </summary>
+public readonly record struct WdfEntry(uint FileId, uint Offset, uint Size);
 
 /// <summary>
 /// Reads asset files out of a Conquer Online <c>.wdf</c> binary archive.
@@ -48,17 +54,58 @@ internal sealed class WdfPackageReader : IPackageReader
                 FileId = reader.ReadUInt32(),
                 FileOffset = reader.ReadUInt32(),
                 FileSize = reader.ReadUInt32(),
-                Reserved = reader.ReadUInt32()
+                Reserved = reader.ReadUInt32()                
             };
             _packedFiles.Add(file.FileId, file);
         }
     }
 
+    // ── Public enumeration ───────────────────────────────────────────────
+
+    /// <summary>
+    /// All entries present in this archive's index table.
+    /// </summary>
+    public IEnumerable<WdfEntry> Entries =>
+        _packedFiles.Values.Select(f => new WdfEntry(f.FileId, f.FileOffset, f.FileSize));
+
+    /// <summary>
+    /// Reads up to <paramref name="maxBytes"/> bytes from the start of the entry
+    /// identified by <paramref name="fileId"/>. Returns <c>null</c> when the id
+    /// is not present in this archive.
+    /// </summary>
+    public byte[]? ReadHeader(uint fileId, int maxBytes = 20)
+    {
+        if (!_packedFiles.TryGetValue(fileId, out var file))
+            return null;
+
+        int count = (int)Math.Min((uint)maxBytes, file.FileSize);
+        var buffer = new byte[count];
+        lock (_packFile)
+        {
+            _packFile.Seek(file.FileOffset, SeekOrigin.Begin);
+            _ = _packFile.Read(buffer, 0, count);
+        }
+        return buffer;
+    }
+
+    // ── IPackageReader ───────────────────────────────────────────────────
+
     public void AddPackage(string fileName) => throw new NotSupportedException();
 
     public Stream LoadFile(string fileName)
     {
-        var hash = HashFilename(fileName);
+        uint hash;
+        // If caller passed a numeric string, treat it as hash
+        // Original filename format: $"{archiveKey}\\{entry.FileId:x8}"
+        var separatorIdx = fileName.IndexOf('\\'); // find the backslash
+        var hashKey = separatorIdx >= 0
+            ? fileName[(separatorIdx + 1)..] // take everything after the backslash
+            : fileName;                      // if no backslash, just take the whole string
+
+        if (uint.TryParse(hashKey, System.Globalization.NumberStyles.HexNumber, null, out uint fileId))
+            hash = fileId;        
+        else        
+            hash = HashFilename(fileName); 
         if (!_packedFiles.TryGetValue(hash, out var file))
             throw new FileNotFoundException($"File not found in WDF: {fileName}");
 
@@ -73,6 +120,8 @@ internal sealed class WdfPackageReader : IPackageReader
         _packedFiles.Clear();
         _packFile.Dispose();
     }
+
+    // ── Hash ─────────────────────────────────────────────────────────────
 
     private static uint HashFilename(string filename)
     {

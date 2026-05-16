@@ -205,7 +205,7 @@ public class C3Shape : IDisposable
     /// Matches C++ Shape_Draw blend setup:
     ///   SetRenderState(D3DRS_SRCBLEND, nAsb); SetRenderState(D3DRS_DESTBLEND, nAdb).
     /// </summary>
-    public void Draw(GraphicsDevice gd, AlphaTestEffect effect,
+    public void Draw(GraphicsDevice gd, AlphaTestEffect alphaTestEffect,
                      Matrix view, Matrix projection, bool bLocal = false)
     {
         if (_vb == null || _segCount == 0) return;
@@ -218,24 +218,43 @@ public class C3Shape : IDisposable
         gd.RasterizerState = RasterizerState.CullNone;
         gd.SamplerStates[0] = SamplerState.LinearWrap;
 
-        // World matrix: identity for world-space vertices (bLocal=false),
-        // LocalMatrix only when bLocal=true (pre-transform was skipped in Update).
-        effect.View = view;
-        effect.Projection = projection;
-        effect.World = bLocal ? (Motion?.LocalMatrix ?? Matrix.Identity) : Matrix.Identity;
-        effect.Texture = tex;
-        effect.VertexColorEnabled = true;
-
         int total = _segCount * 6;
         var gpu = new VertexPositionColorTexture[total];
         for (int i = 0; i < total; i++)
             gpu[i] = new VertexPositionColorTexture(
                 _vb[i].Position, _vb[i].Color, _vb[i].UV);
 
-        foreach (var pass in effect.CurrentTechnique.Passes)
+        if (tex != null)
         {
-            pass.Apply();
-            gd.DrawUserPrimitives(PrimitiveType.TriangleList, gpu, 0, _segCount * 2);
+            // World matrix: identity for world-space vertices (bLocal=false),
+            // LocalMatrix only when bLocal=true (pre-transform was skipped in Update).
+            alphaTestEffect.View = view;
+            alphaTestEffect.Projection = projection;
+            alphaTestEffect.World = bLocal ? (Motion?.LocalMatrix ?? Matrix.Identity) : Matrix.Identity;
+            alphaTestEffect.Texture = tex;
+            alphaTestEffect.VertexColorEnabled = true;
+
+            foreach (var pass in alphaTestEffect.CurrentTechnique.Passes)
+            {
+                pass.Apply();
+                gd.DrawUserPrimitives(PrimitiveType.TriangleList, gpu, 0, _segCount * 2);
+            }
+        }
+        else
+        {
+            var effect = new BasicEffect(gd)
+            { LightingEnabled = false, VertexColorEnabled = true, TextureEnabled = false };
+            effect.View = view;
+            effect.Projection = projection;
+            effect.World = bLocal ? (Motion?.LocalMatrix ?? Matrix.Identity) : Matrix.Identity;
+            effect.Texture = tex;
+            effect.VertexColorEnabled = true;
+
+            foreach (var pass in effect.CurrentTechnique.Passes)
+            {
+                pass.Apply();
+                gd.DrawUserPrimitives(PrimitiveType.TriangleList, gpu, 0, _segCount * 2);
+            }
         }
     }
 
