@@ -1197,6 +1197,133 @@ public class WorkspaceViewModel : ViewModelBase
             root.Children.Add(BuildSimpleRoleNode(role));
         return root;
     }
+    // ── Role Action Types ─────────────────────────────────────────
+    public enum RoleActionType
+    {
+        // Social / Dance
+        Dance1 = 1,
+        Dance2 = 2,
+        Dance3 = 3,
+        Dance4 = 4,
+        Dance5 = 5,
+        Dance6 = 6,
+        Dance7 = 7,
+        Dance8 = 8,
+
+        // Idle / Rest
+        StandBy = 100,
+        Rest1 = 101,
+        Rest2 = 102,
+        Rest3 = 103,
+        StandBy_I = 105,
+
+        // Movement
+        WalkL = 110,
+        WalkR = 111,
+        WalkL_I = 115,
+        WalkR_I = 116,
+        RunL = 120,
+        RunR = 121,
+        Transform = 122,
+        RunL_I = 125,
+        RunR_I = 126,
+
+        // Jump
+        Jump = 130,
+        JumpBack = 131,
+        JumpRun = 132,
+        JumpAtk = 140,
+        JumpAtkEnd = 141,
+
+        // Emotes
+        Laugh = 140,
+        Guffaw = 151,
+        Fury = 160,
+        Sad = 150,
+        Excitement = 180,
+        SayHello = 190,
+        Salute = 160,
+        Genuflect = 170,
+        Kneel = 220,
+        Cool = 230,
+        CoolPose = 231,
+
+        // Sit / Lie
+        Swim = 240,
+        SitDown = 250,
+        SitDown_Static = 251,
+        Zazen = 260,
+        ZazenCool = 261,
+        Faint = 190,
+        Lie = 200,
+
+        // Actions
+        Pickup = 262,
+        Mine = 360,
+
+        // Combat / Alert
+        Alert = 340,
+        Alert_I = 305,
+        Dodge0 = 311,
+        Bruise0 = 321,
+        Bruise1 = 321,
+
+        // Death
+        Die0 = 330,
+        Body0 = 331,
+        Die1 = 332,
+        Body1 = 333,
+        Die2 = 334,
+        Body2 = 335,
+        Die3 = 336,
+        Body3 = 337,
+        DieFly = 340,
+        DieFlyEnd = 341,
+        WalkBack = 342,
+
+        // Attack
+        Attack0 = 350,
+        Attack1 = 351,
+        Attack2 = 352,
+
+        // Revival
+        Relive = 400,
+
+        // Skills
+        Puncture = 451,
+        AirStrike = 452,
+        Tornado = 453,
+        BodyShield = 460,
+        GodBelieve = 465,
+        Bump = 470,
+        PopOff = Bruise0,
+
+        // Intone
+        Intone = 390,
+        Intone_Duration = 391,
+        Intone_Launch = 392,
+
+        // Flying
+        Fly_StandBy = 501,
+        Fly_Alert = 502,
+        Fly_Move = 510,
+        Fly_Attack = 520,
+        Fly_Down = 530,
+        Fly_Up = 540,
+        Fly_Die = 550,
+        Fly_Wound = 560,
+
+        // Shooting
+        JumpBack_Shoot = 610,
+        Fast_Shoot = 620,
+        ChargeUp_Begin = 630,
+        ChargeUp_End = 631,
+
+        // Team motions
+        TM_Fast_Shoot = 800,
+        TM_Dispersion_Shoot = 801
+    }
+
 
     private AssetNode BuildSimpleRoleNode(SimpleRoleTypeInfo role)
     {
@@ -1247,10 +1374,13 @@ public class WorkspaceViewModel : ViewModelBase
 
             // ── Look-based motions ─────────────────────────────────────────
             // Mirrors C3DRole::SetAction: idBodyMotion = look * 1_000_000 + actionType
-            // 100 = StandBy,  110 = Walk,  130 = Jump (C3DRole action constants)
-            TryAddMotion(motions, "StandBy", (ulong)(role.Look * 1_000_000 + 100));
-            TryAddMotion(motions, "Walk", (ulong)(role.Look * 1_000_000 + 110));
-            TryAddMotion(motions, "Jump", (ulong)(role.Look * 1_000_000 + 130));
+            foreach (RoleActionType action in Enum.GetValues(typeof(RoleActionType)))
+            {
+                string name = action.ToString();
+                ulong idBodyMotion = (ulong)(role.Look * 1_000_000 + (int)action);
+                TryAddMotion(motions, name, idBodyMotion);
+            }
+
         }
 
         string[] fxfMeshes = [], fxfTextures = [], fxbMeshes = [], fxbTextures = [];
