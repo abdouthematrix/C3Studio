@@ -16,19 +16,19 @@ public class PtclFrame
 
 /// <summary>
 /// Pre-baked particle system (PTCL chunk). Renders view-aligned billboards.
+///
+/// Each instance owns an <see cref="AlphaTestEffect"/> created on the first
+/// <see cref="Draw"/> call (lazy, because Load() has no GraphicsDevice).
 /// Blend mode is driven by <see cref="BlendAsb"/>/<see cref="BlendAdb"/>
-/// (D3D9 D3DBLEND_* constants, same values used by C3Renderer.ResolveBlendState).
-/// Pass an explicit <paramref name="blendOverride"/> to <see cref="Draw"/> only
-/// when you need to force a specific state (e.g. during a render-to-texture pass).
+/// via <see cref="C3BlendHelper.Resolve"/> (D3D9 D3DBLEND_* constants).
 /// </summary>
 public class C3Ptcl : IDisposable
 {
     public int PartIndex = -1;
 
     // D3D blend factors: 5=SrcAlpha, 6=InvSrcAlpha (standard AlphaBlend).
-    // Common alternatives: 2/2 = additive, 5/2 = soft-additive glow.
-    // Changing default to 5/2 (Soft Additive) for particles since Conquer effects heavily rely on Additive glow,
-    // which naturally hides black-background textures without needing expensive pixel-level color keying.
+    // Defaulting to 5/2 (Soft Additive) for particles since Conquer effects
+    // heavily rely on additive glow that hides black-background textures.
     public int BlendAsb { get; set; } = 5;
     public int BlendAdb { get; set; } = 2;
 
@@ -49,20 +49,19 @@ public class C3Ptcl : IDisposable
     public float TotalLifetime { get; set; }
     public float MaxAlpha { get; set; }
     public float MinAlpha { get; set; }
-    public float GlobalAlpha { get; set; } = 1.0f;
-    public float InitialAlpha { get; set; } = 0.0f;
+    public float GlobalAlpha { get; set; } = 1f;
+    public float InitialAlpha { get; set; }
     public float RotationSpeed { get; set; }
-    public float ScaleX { get; set; } = 1.0f;
-    public float ScaleY { get; set; } = 1.0f;
-    public float ScaleZ { get; set; } = 1.0f;
+    public float ScaleX { get; set; } = 1f;
+    public float ScaleY { get; set; } = 1f;
+    public float ScaleZ { get; set; } = 1f;
 
-    // Both buffers are allocated together in Load(); never null after that.
+    // CPU buffers — allocated once in Load(), sized to MaxCount.
     private VertexPositionColorTexture[]? _vb;
     private short[]? _ib;
 
-    // ── Blend-state cache shared across all instances ─────────────────────
-    // BlendState is a GPU resource; never re-create it every frame.
-    private static readonly Dictionary<(int, int), BlendState> _blendCache = new();
+    // Per-instance effect — created lazily on first Draw.
+    private AlphaTestEffect? _effect;
 
     // ── Serialisation ─────────────────────────────────────────────────────
     public static C3Ptcl Load(BinaryReader br, string tag = "PTCL")
@@ -80,29 +79,25 @@ public class C3Ptcl : IDisposable
 
         if (p.IsPTC3)
         {
-            br.ReadByte(); // field_68
-            br.ReadByte(); // field_69
-            br.ReadUInt32(); // field_6C
-            br.ReadUInt32(); // field_70
-            p.ScaleX = br.ReadSingle(); // field_74
-            p.ScaleY = br.ReadSingle(); // field_78
-            p.ScaleZ = br.ReadSingle(); // field_7C
-            br.ReadUInt32(); // field_80
-            br.ReadUInt32(); // field_84
-            p.RotationSpeed = br.ReadSingle() * 180.0f / MathF.PI; // field_88 in degrees
-            p.MaxAlpha = br.ReadSingle(); // field_8C
-            p.MinAlpha = br.ReadSingle(); // field_90
-            
-            float lifetimeBits = br.ReadSingle(); // field_94 is float bits
-            p.TotalLifetime = lifetimeBits;
-            
-            p.FadeStartAge = br.ReadSingle(); // field_98
+            br.ReadByte();    // field_68
+            br.ReadByte();    // field_69
+            br.ReadUInt32();  // field_6C
+            br.ReadUInt32();  // field_70
+            p.ScaleX = br.ReadSingle();                          // field_74
+            p.ScaleY = br.ReadSingle();                          // field_78
+            p.ScaleZ = br.ReadSingle();                          // field_7C
+            br.ReadUInt32();  // field_80
+            br.ReadUInt32();  // field_84
+            p.RotationSpeed = br.ReadSingle() * 180f / MathF.PI;       // field_88 → degrees
+            p.MaxAlpha = br.ReadSingle();                          // field_8C
+            p.MinAlpha = br.ReadSingle();                          // field_90
+            p.TotalLifetime = br.ReadSingle();                          // field_94
+            p.FadeStartAge = br.ReadSingle();                          // field_98
             p.FadeEndAge = p.TotalLifetime * 0.8f;
         }
 
         p.MaxCount = (int)br.ReadUInt32();
 
-        // Allocate CPU buffers once — sized to the maximum particle count.
         p._vb = new VertexPositionColorTexture[p.MaxCount * 4];
         p._ib = new short[p.MaxCount * 6];
 
@@ -115,10 +110,7 @@ public class C3Ptcl : IDisposable
             uint count = br.ReadUInt32();
             if (count > 0)
             {
-                if (p.IsPTC3)
-                {
-                    br.ReadBytes((int)count * 2); // Skip lpIndices
-                }
+                if (p.IsPTC3) br.ReadBytes((int)count * 2); // skip lpIndices
 
                 frame.Positions = new Vector3[count];
                 for (int i = 0; i < (int)count; i++)
@@ -141,11 +133,11 @@ public class C3Ptcl : IDisposable
     // ── Rendering ─────────────────────────────────────────────────────────
     /// <summary>
     /// Draws the current particle frame as view-aligned billboards.
-    /// Blend state is resolved from <see cref="BlendAsb"/>/<see cref="BlendAdb"/>
-    /// unless <paramref name="blendOverride"/> is provided.
+    /// The per-instance <see cref="AlphaTestEffect"/> is created on the first call.
+    /// Blend state is resolved via <see cref="C3BlendHelper"/> unless
+    /// <paramref name="blendOverride"/> is provided.
     /// </summary>
-    public void Draw(GraphicsDevice gd, AlphaTestEffect effect,
-                     Matrix view, Matrix projection,
+    public void Draw(GraphicsDevice gd, Matrix view, Matrix projection,
                      BlendState? blendOverride = null)
     {
         if (Frames == null || _vb == null || _ib == null) return;
@@ -153,26 +145,30 @@ public class C3Ptcl : IDisposable
         var frame = Frames[CurrentFrame];
         if (frame.Count == 0) return;
 
+        // Lazy effect creation — no GraphicsDevice available at Load() time.
+        _effect ??= new AlphaTestEffect(gd)
+        {
+            AlphaFunction = CompareFunction.GreaterEqual,
+            ReferenceAlpha = 8,
+        };
+
         var tex = C3Texture.Get(TexIndex)?.Texture;
         int segCount = TexRow * TexRow;
         float segSize = 1f / TexRow;
 
-        // Transform: frame local → world (LocalMatrix) → camera view.
-        // Equivalent to C++: inv = frame->matrix * lpPtcl->matrix * g_ViewMatrix.
+        // frame local → world (LocalMatrix) → camera view
         Matrix xform = frame.FrameMatrix * LocalMatrix * view;
 
         for (int n = 0; n < frame.Count; n++)
         {
             float age = frame.Ages![n];
-            // Clamp tile index so Ages slightly above 1.0 don't index OOB.
-            // (C++ casts to DWORD without clamping — this is a safe improvement.)
             int tileIdx = Math.Clamp((int)(age * segCount), 0, segCount - 1);
             float u = (tileIdx % TexRow) * segSize;
             float v = (tileIdx / TexRow) * segSize;
 
             Vector3 vpos = Vector3.Transform(frame.Positions![n], xform);
             float s = frame.Sizes![n];
-            
+
             Vector3 rotatedRight = new Vector3(s, 0, 0);
             Vector3 rotatedUp = new Vector3(0, s, 0);
             Color color = Color.White;
@@ -182,56 +178,53 @@ public class C3Ptcl : IDisposable
                 float rx = s * ScaleX;
                 float ry = s * ScaleY;
 
-                float rotationAngle = age * RotationSpeed * MathF.PI / 180.0f;
-                float cosRot = MathF.Cos(rotationAngle);
-                float sinRot = MathF.Sin(rotationAngle);
+                float angle = age * RotationSpeed * MathF.PI / 180f;
+                float cosRot = MathF.Cos(angle);
+                float sinRot = MathF.Sin(angle);
 
                 rotatedRight = new Vector3(rx * cosRot, rx * sinRot, 0);
                 rotatedUp = new Vector3(-ry * sinRot, ry * cosRot, 0);
 
-                float alpha = 1.0f;
-                if (age >= FadeStartAge) {
-                    if (age < FadeEndAge) {
+                float alpha;
+                if (age >= FadeStartAge)
+                {
+                    if (age < FadeEndAge)
+                    {
                         alpha = MaxAlpha;
-                    } else {
-                        float fadeRange = TotalLifetime - FadeEndAge;
-                        if (fadeRange > 0.0f) {
-                            float fadeFactor = (age - FadeEndAge) / fadeRange;
-                            alpha = (1.0f - fadeFactor) * MaxAlpha + fadeFactor * MinAlpha;
-                        } else {
-                            alpha = MinAlpha;
-                        }
                     }
-                } else {
-                    if (FadeStartAge > 0.0f) {
-                        float fadeFactor = age / FadeStartAge;
-                        alpha = (1.0f - fadeFactor) * InitialAlpha + fadeFactor * MaxAlpha;
-                    } else {
-                        alpha = MaxAlpha;
+                    else
+                    {
+                        float range = TotalLifetime - FadeEndAge;
+                        alpha = range > 0f
+                            ? (1f - (age - FadeEndAge) / range) * MaxAlpha + ((age - FadeEndAge) / range) * MinAlpha
+                            : MinAlpha;
                     }
                 }
-                alpha *= GlobalAlpha;
-                alpha = Math.Clamp(alpha, 0f, 1f);
+                else
+                {
+                    alpha = FadeStartAge > 0f
+                        ? (1f - age / FadeStartAge) * InitialAlpha + (age / FadeStartAge) * MaxAlpha
+                        : MaxAlpha;
+                }
+
+                alpha = Math.Clamp(alpha * GlobalAlpha, 0f, 1f);
                 color = new Color(255, 255, 255, (int)(alpha * 255));
             }
 
-            // Billboard quad — same vertex layout as C++ PtclVertex array.
-            // vb[n*4+0] = bottom-left,  vb[n*4+1] = bottom-right
-            // vb[n*4+2] = top-left,     vb[n*4+3] = top-right
+            // Billboard quad — same layout as the C++ PtclVertex array.
             _vb[n * 4 + 0] = new VertexPositionColorTexture(
-                new Vector3(vpos.X - rotatedRight.X - rotatedUp.X, vpos.Y - rotatedRight.Y - rotatedUp.Y, vpos.Z), color,
-                new Vector2(u, v + segSize));
+                new Vector3(vpos.X - rotatedRight.X - rotatedUp.X, vpos.Y - rotatedRight.Y - rotatedUp.Y, vpos.Z),
+                color, new Vector2(u, v + segSize));
             _vb[n * 4 + 1] = new VertexPositionColorTexture(
-                new Vector3(vpos.X + rotatedRight.X - rotatedUp.X, vpos.Y + rotatedRight.Y - rotatedUp.Y, vpos.Z), color,
-                new Vector2(u + segSize, v + segSize));
+                new Vector3(vpos.X + rotatedRight.X - rotatedUp.X, vpos.Y + rotatedRight.Y - rotatedUp.Y, vpos.Z),
+                color, new Vector2(u + segSize, v + segSize));
             _vb[n * 4 + 2] = new VertexPositionColorTexture(
-                new Vector3(vpos.X - rotatedRight.X + rotatedUp.X, vpos.Y - rotatedRight.Y + rotatedUp.Y, vpos.Z), color,
-                new Vector2(u, v));
+                new Vector3(vpos.X - rotatedRight.X + rotatedUp.X, vpos.Y - rotatedRight.Y + rotatedUp.Y, vpos.Z),
+                color, new Vector2(u, v));
             _vb[n * 4 + 3] = new VertexPositionColorTexture(
-                new Vector3(vpos.X + rotatedRight.X + rotatedUp.X, vpos.Y + rotatedRight.Y + rotatedUp.Y, vpos.Z), color,
-                new Vector2(u + segSize, v));
+                new Vector3(vpos.X + rotatedRight.X + rotatedUp.X, vpos.Y + rotatedRight.Y + rotatedUp.Y, vpos.Z),
+                color, new Vector2(u + segSize, v));
 
-            // Two triangles per quad: (0,1,2) and (2,1,3)
             _ib[n * 6 + 0] = (short)(n * 4);
             _ib[n * 6 + 1] = (short)(n * 4 + 1);
             _ib[n * 6 + 2] = (short)(n * 4 + 2);
@@ -240,32 +233,19 @@ public class C3Ptcl : IDisposable
             _ib[n * 6 + 5] = (short)(n * 4 + 3);
         }
 
-        // The C++ billboard trick:  set World = invView while the D3D View matrix
-        // is still active → invView × View = Identity, so the GPU just projects
-        // the pre-view-space positions directly.
-        //
-        // In MonoGame we override effect.View = Identity, so there is NO View
-        // matrix in the pipeline to cancel against.  Setting World = invView
-        // would apply an extra invView pass, corrupting every position.
-        // The correct equivalent is simply World = Identity:
-        //   GPU transform = Identity × Identity × Projection × view_space_pos
-        //                 = Projection × view_space_pos   ✓
-        //
-        // (The old code set World = invView, which accidentally showed particles
-        // when LocalMatrix was Identity but broke them once WorldCorrection was
-        // applied — because invView × Projection × WorldCorrection ≠ anything sane.)
-        gd.BlendState = blendOverride ?? ResolveBlendState(BlendAsb, BlendAdb);
+        // Particles are already in view space — World = Identity, no extra View pass.
+        gd.BlendState = blendOverride ?? C3BlendHelper.Resolve(BlendAsb, BlendAdb);
         gd.DepthStencilState = DepthStencilState.DepthRead;
         gd.RasterizerState = RasterizerState.CullNone;
         gd.SamplerStates[0] = SamplerState.LinearWrap;
 
-        effect.View = Matrix.Identity;
-        effect.Projection = projection;
-        effect.World = Matrix.Identity;   // ← was Matrix.Invert(view), which is wrong in MonoGame
-        effect.Texture = tex;
-        effect.VertexColorEnabled = true;
+        _effect.View = Matrix.Identity;
+        _effect.Projection = projection;
+        _effect.World = Matrix.Identity;
+        _effect.Texture = tex;
+        _effect.VertexColorEnabled = true;
 
-        foreach (var pass in effect.CurrentTechnique.Passes)
+        foreach (var pass in _effect.CurrentTechnique.Passes)
         {
             pass.Apply();
             gd.DrawUserIndexedPrimitives(
@@ -288,57 +268,12 @@ public class C3Ptcl : IDisposable
             CurrentFrame = frame % Frames.Length;
     }
 
-    // ── Blend helpers ─────────────────────────────────────────────────────
-    /// <summary>
-    /// Maps a pair of D3DBLEND_* integer constants to a (cached) MonoGame BlendState.
-    /// Mirrors C3Renderer.ResolveBlendState; kept here so C3Ptcl can be self-contained.
-    /// D3DBLEND values: 1=ZERO 2=ONE 5=SRCALPHA 6=INVSRCALPHA (most common).
-    /// </summary>
-    private static BlendState ResolveBlendState(int asb, int adb)
-    {
-        var key = (asb, adb);
-        if (_blendCache.TryGetValue(key, out var cached)) return cached;
-
-        var src = D3dBlend(asb);
-        var dst = D3dBlend(adb);
-
-        // Reuse the built-in singleton for the most common case.
-        //if (src == Blend.SourceAlpha && dst == Blend.InverseSourceAlpha)
-        //    return _blendCache[key] = BlendState.AlphaBlend;
-
-        var bs = new BlendState
-        {
-            ColorSourceBlend = src,
-            ColorDestinationBlend = dst,
-            AlphaSourceBlend = src,
-            AlphaDestinationBlend = dst,
-        };
-        return _blendCache[key] = bs;
-    }
-
-    private static Blend D3dBlend(int d3d) => d3d switch
-    {
-        1 => Blend.Zero,
-        2 => Blend.One,
-        3 => Blend.SourceColor,
-        4 => Blend.InverseSourceColor,
-        5 => Blend.SourceAlpha,
-        6 => Blend.InverseSourceAlpha,
-        7 => Blend.DestinationAlpha,
-        8 => Blend.InverseDestinationAlpha,
-        9 => Blend.DestinationColor,
-        10 => Blend.InverseDestinationColor,
-        11 => Blend.SourceAlphaSaturation,
-        _ => Blend.One,   // unknown → safe fallback (matches C++ default)
-    };
-
     // ── IDisposable ───────────────────────────────────────────────────────
     public void Dispose()
     {
-        if (TexIndex != -1)
-        {
-            C3Texture.Texture_Unload(TexIndex);
-            TexIndex = -1;
-        }
+        _effect?.Dispose();
+        _effect = null;
+
+        if (TexIndex != -1) { C3Texture.Texture_Unload(TexIndex); TexIndex = -1; }
     }
 }

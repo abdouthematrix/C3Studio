@@ -22,9 +22,7 @@ public class C3SMotion
     }
 
     public void NextFrame(int step = 1)
-    {
-        if (FrameCount > 0) CurrentFrame = (CurrentFrame + step) % FrameCount;
-    }
+    { if (FrameCount > 0) CurrentFrame = (CurrentFrame + step) % FrameCount; }
 
     public void SetFrame(int frame) { CurrentFrame = frame; }
     public void ClearMatrix() { LocalMatrix = Matrix.Identity; }
@@ -55,8 +53,10 @@ public struct ShapeOutVertex
 /// <summary>
 /// Animated ribbon/blade trail (SHAP chunk). Ring-buffer of interpolated quad segments.
 ///
-/// Blend mode is driven by <see cref="BlendAsb"/>/<see cref="BlendAdb"/>
-/// (D3D9 D3DBLEND_* constants), matching C++ Shape_Draw(nAsb, nAdb).
+/// Each instance owns an <see cref="AlphaTestEffect"/> created lazily on the first
+/// <see cref="Draw"/> call.  Blend mode is driven by <see cref="BlendAsb"/> /
+/// <see cref="BlendAdb"/> via <see cref="C3BlendHelper.Resolve"/>.
+///
 /// The smooth sub-step count is hardcoded to 10, mirroring the C++ constant
 /// override inside Shape_SetSegment (the parameter there is silently ignored).
 /// </summary>
@@ -76,8 +76,8 @@ public class C3Shape : IDisposable
 
     // ── Ring-buffer state ─────────────────────────────────────────────────
     private ShapeOutVertex[]? _vb;
-    private int _segCount;   // total slot count = rawSegments * (SMOOTH + 1)
-    private int _segCur;     // next-write ring position
+    private int _segCount;
+    private int _segCur;
     private bool _isFirst = true;
 
     // Mirrors C++ dwSmooth — hardcoded to 10 (Shape_SetSegment ignores its param).
@@ -85,8 +85,8 @@ public class C3Shape : IDisposable
 
     private Vector3 _lastA, _lastB;
 
-    // ── Blend-state cache shared across all instances ─────────────────────
-    private static readonly Dictionary<(int, int), BlendState> _blendCache = new();
+    // Per-instance effect — created lazily on first Draw.
+    private AlphaTestEffect? _effect;
 
     // ── Serialisation ─────────────────────────────────────────────────────
     public static C3Shape Load(BinaryReader br)
@@ -103,8 +103,7 @@ public class C3Shape : IDisposable
             uint vecCount = br.ReadUInt32();
             var line = new C3Line { Points = new Vector3[vecCount] };
             for (int v = 0; v < (int)vecCount; v++)
-                line.Points[v] = new Vector3(
-                    br.ReadSingle(), br.ReadSingle(), br.ReadSingle());
+                line.Points[v] = new Vector3(br.ReadSingle(), br.ReadSingle(), br.ReadSingle());
             s.Lines[n] = line;
         }
 
@@ -119,77 +118,57 @@ public class C3Shape : IDisposable
     // ── Segment buffer ────────────────────────────────────────────────────
     /// <summary>
     /// (Re-)allocates the ring buffer.
-    /// Expands <paramref name="seg"/> by <c>(SMOOTH + 1)</c>, mirroring
-    /// C++ <c>Shape_SetSegment</c> which also ignores the smooth parameter
-    /// and hard-overrides it to 10.
-    /// Resets the ring cursor and the first-frame flag so stale data from
-    /// a previous buffer is never visible.
+    /// Expands <paramref name="seg"/> by <c>(SMOOTH + 1)</c>, mirroring C++
+    /// Shape_SetSegment which also ignores the smooth parameter and hard-overrides it to 10.
     /// </summary>
     public void SetSegment(int seg)
     {
         _segCount = seg * (SMOOTH + 1);
         _segCur = 0;
-        // FIX: always reset _isFirst so the new (zero-filled) buffer gets a
-        // full Array.Clear on the very next Update() call, even if SetSegment
-        // is called after the shape has already been used.
         _isFirst = true;
         _vb = new ShapeOutVertex[_segCount * 6];
-        // Array is zero-initialised by the CLR; no extra ZeroMemory needed.
     }
 
     // ── Per-frame update ──────────────────────────────────────────────────
     /// <summary>
     /// Advances the ribbon by one frame.
-    /// Matches C++ <c>Shape_Draw</c> logic (update portion):
-    ///   • bLocal=false → GetWorldMatrix(applyLocal:true)  = frame * LocalMatrix
-    ///   • bLocal=true  → GetWorldMatrix(applyLocal:false) = frame only
+    /// Matches C++ Shape_Draw logic (update portion):
+    ///   bLocal=false → GetWorldMatrix(applyLocal:true)  = frame * LocalMatrix
+    ///   bLocal=true  → GetWorldMatrix(applyLocal:false) = frame only
     /// </summary>
     public void Update(bool bLocal = false)
     {
-        if (Motion == null || Lines == null || Lines.Length == 0 || _vb == null)
-            return;
+        if (Motion == null || Lines == null || Lines.Length == 0 || _vb == null) return;
 
-        // Resolve the two blade endpoints in world space.
         Matrix mm = Motion.GetWorldMatrix(applyLocal: !bLocal);
         Vector3 vecA = Vector3.Transform(Lines[0].Points![0], mm);
-        // Guard for single-point lines (C++ would read index 1 without checking).
         Vector3 vecB = Vector3.Transform(
             Lines[0].Points!.Length > 1 ? Lines[0].Points[1] : Lines[0].Points[0], mm);
 
         if (_isFirst)
         {
-            // First valid frame: zero the entire buffer and seed the 'last' positions
-            // so the first real segment doesn't interpolate from Vector3.Zero.
             Array.Clear(_vb, 0, _vb.Length);
             _isFirst = false;
         }
         else
         {
-            // Compute the reference blade length (used to preserve width during lerp).
             float len = Vector3.Distance(vecA, vecB);
-
             Vector3 prevA = _lastA, prevB = _lastB;
 
-            // SMOOTH sub-steps between the previous and current frame positions,
-            // matching C++ loop: nn = 0 .. dwSmooth-1, t = (nn+1)/(dwSmooth+1).
             for (int nn = 0; nn < SMOOTH; nn++)
             {
                 float t = (nn + 1f) / (SMOOTH + 1f);
                 Vector3 sA = Vector3.Lerp(_lastA, vecA, t);
                 Vector3 sB = Vector3.Lerp(_lastB, vecB, t);
 
-                // Preserve blade width: rescale the A endpoint so |sA-sB| == len.
-                // Guard against degenerate zero-length segments.
                 float lnow = Vector3.Distance(sA, sB);
-                if (lnow > 0.0001f)
-                    sA = Vector3.Lerp(sB, sA, len / lnow);
+                if (lnow > 0.0001f) sA = Vector3.Lerp(sB, sA, len / lnow);
 
                 WriteSegment(sA, sB, prevA, prevB);
                 prevA = sA;
                 prevB = sB;
             }
 
-            // Final segment uses the true current-frame positions.
             WriteSegment(vecA, vecB, prevA, prevB);
             UpdateUVs();
         }
@@ -200,39 +179,40 @@ public class C3Shape : IDisposable
 
     // ── Rendering ─────────────────────────────────────────────────────────
     /// <summary>
-    /// Draws the accumulated ribbon geometry.
-    /// Blend state is resolved from <see cref="BlendAsb"/>/<see cref="BlendAdb"/>.
-    /// Matches C++ Shape_Draw blend setup:
-    ///   SetRenderState(D3DRS_SRCBLEND, nAsb); SetRenderState(D3DRS_DESTBLEND, nAdb).
+    /// Draws the accumulated ribbon geometry using the per-instance
+    /// <see cref="AlphaTestEffect"/> (created lazily on the first call).
+    /// Blend state from <see cref="C3BlendHelper.Resolve"/> using own D3D factors.
     /// </summary>
-    public void Draw(GraphicsDevice gd, AlphaTestEffect effect,
-                     Matrix view, Matrix projection, bool bLocal = false)
+    public void Draw(GraphicsDevice gd, Matrix view, Matrix projection, bool bLocal = false)
     {
         if (_vb == null || _segCount == 0) return;
 
+        // Lazy effect creation — no GraphicsDevice available at Load() time.
+        _effect ??= new AlphaTestEffect(gd)
+        {
+            AlphaFunction = CompareFunction.GreaterEqual,
+            ReferenceAlpha = 8,
+        };
+
         var tex = C3Texture.Get(TexIndex)?.Texture;
 
-        // FIX: resolve blend from own D3D factors instead of always using AlphaBlend.
-        gd.BlendState = ResolveBlendState(BlendAsb, BlendAdb);
+        gd.BlendState = C3BlendHelper.Resolve(BlendAsb, BlendAdb);
         gd.DepthStencilState = DepthStencilState.DepthRead;
         gd.RasterizerState = RasterizerState.CullNone;
         gd.SamplerStates[0] = SamplerState.LinearWrap;
 
-        // World matrix: identity for world-space vertices (bLocal=false),
-        // LocalMatrix only when bLocal=true (pre-transform was skipped in Update).
-        effect.View = view;
-        effect.Projection = projection;
-        effect.World = bLocal ? (Motion?.LocalMatrix ?? Matrix.Identity) : Matrix.Identity;
-        effect.Texture = tex;
-        effect.VertexColorEnabled = true;
+        _effect.View = view;
+        _effect.Projection = projection;
+        _effect.World = bLocal ? (Motion?.LocalMatrix ?? Matrix.Identity) : Matrix.Identity;
+        _effect.Texture = tex;
+        _effect.VertexColorEnabled = true;
 
         int total = _segCount * 6;
         var gpu = new VertexPositionColorTexture[total];
         for (int i = 0; i < total; i++)
-            gpu[i] = new VertexPositionColorTexture(
-                _vb[i].Position, _vb[i].Color, _vb[i].UV);
+            gpu[i] = new VertexPositionColorTexture(_vb[i].Position, _vb[i].Color, _vb[i].UV);
 
-        foreach (var pass in effect.CurrentTechnique.Passes)
+        foreach (var pass in _effect.CurrentTechnique.Passes)
         {
             pass.Apply();
             gd.DrawUserPrimitives(PrimitiveType.TriangleList, gpu, 0, _segCount * 2);
@@ -245,13 +225,11 @@ public class C3Shape : IDisposable
 
     // ── Private geometry helpers ──────────────────────────────────────────
     /// <summary>
-    /// Writes one quad segment (6 vertices) into the ring buffer at <c>_segCur</c>
-    /// then advances the cursor, wrapping at <c>_segCount</c>.
-    ///
+    /// Writes one quad (6 vertices) into the ring buffer at <c>_segCur</c>.
     /// Vertex layout mirrors C++ exactly:
     ///   [0] current A   [1] current B
     ///   [2] previous B  [3] previous A
-    ///   [4] previous B  [5] current A   (second triangle shares two edges)
+    ///   [4] previous B  [5] current A
     /// </summary>
     private void WriteSegment(Vector3 a, Vector3 b, Vector3 prevA, Vector3 prevB)
     {
@@ -267,33 +245,23 @@ public class C3Shape : IDisposable
     }
 
     /// <summary>
-    /// Assigns UV coordinates to every segment in the ring, starting from the
-    /// most-recently-written slot and walking backwards through the ring.
-    /// U runs from 0.95 (newest) down to near 0 (oldest), giving a
-    /// fade-along-the-trail effect via an alpha-gradient texture.
-    ///
-    /// Matches C++ UV loop exactly:
-    ///   add = dwSegment; uvstep = 0.9f/add;
-    ///   u = add*uvstep + 0.05  (= 0.95 for the newest segment).
+    /// Assigns UV coordinates to every segment in the ring, newest → oldest,
+    /// U running from 0.95 down to ~0.05.  Matches C++ UV loop exactly.
     /// </summary>
     private void UpdateUVs()
     {
         if (_vb == null) return;
         float uvStep = 0.9f / _segCount;
-        float u = (float)_segCount * uvStep + 0.05f;   // starts at 0.95
+        float u = _segCount * uvStep + 0.05f;   // starts at 0.95
 
-        // Walk backwards from the just-written slot (_segCur was already advanced).
-        for (int n = _segCur - 1; n >= 0; n--)
-        { SetSegmentUV(n, u, uvStep); u -= uvStep; }
-
-        for (int n = _segCount - 1; n > _segCur; n--)
-        { SetSegmentUV(n, u, uvStep); u -= uvStep; }
+        for (int n = _segCur - 1; n >= 0; n--) { SetSegmentUV(n, u, uvStep); u -= uvStep; }
+        for (int n = _segCount - 1; n > _segCur; n--) { SetSegmentUV(n, u, uvStep); u -= uvStep; }
     }
 
     /// <summary>
-    /// Assigns the (u, u-step) UV pair to one segment's six vertices.
-    /// Vertex UV mapping:
-    ///   [0][1][5] → (u,   0/1/0)   current edge
+    /// Assigns one UV pair to a segment's six vertices.
+    /// Vertex mapping:
+    ///   [0][1][5] → (u, 0/1/0) current edge
     ///   [2][3][4] → (u-step, 1/0/1) previous edge
     /// </summary>
     private void SetSegmentUV(int seg, float u, float step)
@@ -309,51 +277,12 @@ public class C3Shape : IDisposable
         _vb[b + 4].UV = new Vector2(u, 1);
     }
 
-    // ── Blend helpers ─────────────────────────────────────────────────────
-    private static BlendState ResolveBlendState(int asb, int adb)
-    {
-        var key = (asb, adb);
-        if (_blendCache.TryGetValue(key, out var cached)) return cached;
-
-        var src = D3dBlend(asb);
-        var dst = D3dBlend(adb);
-
-        //if (src == Blend.SourceAlpha && dst == Blend.InverseSourceAlpha)
-        //    return _blendCache[key] = BlendState.AlphaBlend;
-
-        var bs = new BlendState
-        {
-            ColorSourceBlend = src,
-            ColorDestinationBlend = dst,
-            AlphaSourceBlend = src,
-            AlphaDestinationBlend = dst,
-        };
-        return _blendCache[key] = bs;
-    }
-
-    private static Blend D3dBlend(int d3d) => d3d switch
-    {
-        1 => Blend.Zero,
-        2 => Blend.One,
-        3 => Blend.SourceColor,
-        4 => Blend.InverseSourceColor,
-        5 => Blend.SourceAlpha,
-        6 => Blend.InverseSourceAlpha,
-        7 => Blend.DestinationAlpha,
-        8 => Blend.InverseDestinationAlpha,
-        9 => Blend.DestinationColor,
-        10 => Blend.InverseDestinationColor,
-        11 => Blend.SourceAlphaSaturation,
-        _ => Blend.One,
-    };
-
     // ── IDisposable ───────────────────────────────────────────────────────
     public void Dispose()
     {
-        if (TexIndex != -1)
-        {
-            C3Texture.Texture_Unload(TexIndex);
-            TexIndex = -1;
-        }
+        _effect?.Dispose();
+        _effect = null;
+
+        if (TexIndex != -1) { C3Texture.Texture_Unload(TexIndex); TexIndex = -1; }
     }
 }
