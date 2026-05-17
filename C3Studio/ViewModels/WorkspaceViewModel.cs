@@ -1,6 +1,7 @@
 using C3Studio.Core.Models;
 using C3Studio.Core.Services;
 using C3Studio.MonoGame;
+using System;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Windows.Forms;
@@ -1372,6 +1373,7 @@ public class WorkspaceViewModel : ViewModelBase
                     (hairMeshes, hairTextures, hairAsb, hairAdb) = BuildMeshArraysForArmet(armet);
             }
 
+            TryAddMotion(motions, "StandBy", (ulong)(role.Look * 1_000_000 + (int)RoleActionType.StandBy));
             // ── Look-based motions ─────────────────────────────────────────
             // Mirrors C3DRole::SetAction: idBodyMotion = look * 1_000_000 + actionType
             foreach (RoleActionType action in Enum.GetValues(typeof(RoleActionType)))

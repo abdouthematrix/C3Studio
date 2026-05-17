@@ -163,7 +163,7 @@ public sealed class C3AssetLoader
         if (string.IsNullOrEmpty(relativePath)) return -1;
 
         // 1 – cache hit
-        int cached = C3Texture.FindByName(relativePath);
+        int cached = C3Texture.Texture_Load(relativePath);
         if (cached >= 0) return cached;
 
         try
@@ -173,11 +173,9 @@ public sealed class C3AssetLoader
             {
                 using var stream = _assets.Open(relativePath);
                 var tex = DecodeTexture(stream, relativePath);
-                return C3Texture.InsertTexture(relativePath, tex);
+                return C3Texture.Texture_Load(relativePath, tex);
             }
-
-            // 3 – direct filesystem
-            return C3Texture.Texture_Load(relativePath);
+            return -1;
         }
         catch (Exception ex)
         {
