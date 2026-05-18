@@ -1,6 +1,7 @@
+using Microsoft.Xna.Framework.Graphics;
 using System;
 using System.IO;
-using Microsoft.Xna.Framework.Graphics;
+using System.Reflection;
 
 namespace C3Studio.Infrastructure.C3Format;
 
@@ -138,6 +139,8 @@ public static class C3Texture
 
     public static void Texture_Unload(int texIndex)
     {
+        if (Textures[texIndex] == null)
+            return;
         Texture_Unload(Get(texIndex));
     }
     /// <summary>

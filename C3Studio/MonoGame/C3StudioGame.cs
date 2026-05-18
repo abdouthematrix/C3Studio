@@ -140,6 +140,7 @@ public class C3StudioGame : WpfGame
         if (_renderer == null || _loader == null) return;
         try
         {
+            _renderer.Unload();
             var model = _loader.LoadModel(relativePath);
             if (model == null) return;
 
@@ -148,7 +149,7 @@ public class C3StudioGame : WpfGame
             {
                 var tex = C3Texture.Get(texIdx)?.Texture;
                 foreach (var phy in model.Phys)
-                    phy.TexIndex = texIdx;
+                    phy.TexIndex = texIdx;                
                 _renderer.LoadModelDirect(model, WorldCorrection);
                 if (tex != null) _renderer.OverrideTexture(tex);
             }
@@ -177,6 +178,7 @@ public class C3StudioGame : WpfGame
         if (_renderer == null || _loader == null) return;
         try
         {
+            _renderer.Unload();
             var (model, partCount) = _loader.LoadAndMerge(parts);
             if (model == null) return;
 

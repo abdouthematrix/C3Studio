@@ -53,30 +53,9 @@ public class C3Renderer : IDisposable
 
     public C3Renderer(GraphicsDevice gd) { _gd = gd; }
 
-    // ── Model loading ─────────────────────────────────────────────────────
-    public void LoadModel(string c3FilePath, string? texturePath = null, Matrix? worldRotation = null)
-    {
-        Unload();
-        _model = C3Model.Load(c3FilePath, gd: _gd);
-        _model.PhyReplaced += OnPhyReplaced;
-
-        ApplyWorldRotation(worldRotation);
-        _model.Calculate();
-
-        string dir = Path.GetDirectoryName(c3FilePath) ?? string.Empty;
-        string name = Path.GetFileNameWithoutExtension(c3FilePath);
-
-        foreach (var phy in _model.Phys)
-        {
-            phy.InitializeGPU(_gd);
-            phy.GpuTexture = ResolvePhyTexture(phy, texturePath, dir, name);
-        }
-        foreach (var scene in _model.Scenes) scene.UploadGPU(_gd);
-    }
-
+    // ── Model loading ─────────────────────────────────────────────────────    
     public void LoadModelDirect(C3Model model, Matrix? worldRotation = null)
-    {
-        Unload();
+    {        
         _model = model;
         _model.PhyReplaced += OnPhyReplaced;
 
@@ -249,7 +228,7 @@ public class C3Renderer : IDisposable
             if (phy.Draw) phy.UploadVertices();
     }
 
-    private void Unload()
+    public void Unload()
     {
         if (_model != null)
         {
