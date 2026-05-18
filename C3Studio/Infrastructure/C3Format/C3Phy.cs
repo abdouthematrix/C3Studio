@@ -177,6 +177,7 @@ public class C3Phy : IDisposable
         return phy;
     }
 
+    // ------------------------------------------------------------------
     // ── GPU lifecycle ─────────────────────────────────────────────────────
     /// <summary>
     /// Creates GPU vertex/index buffers and the mesh's private effects.
@@ -461,11 +462,19 @@ public class C3Phy : IDisposable
     {
         _vertexBuffer?.Dispose();
         _indexBuffer?.Dispose();
+<<<<<<<<< Temporary merge branch 1
+        _basicEffect?.Dispose();
+        _alphaTestEffect?.Dispose();
+        _vertexBuffer = null;
+        _indexBuffer = null;
+        _basicEffect = null;
+=========
         //_basicEffect?.Dispose();
         _alphaTestEffect?.Dispose();
         _vertexBuffer = null;
         _indexBuffer = null;
         //_basicEffect = null;
+>>>>>>>>> Temporary merge branch 2
         _alphaTestEffect = null;
 
         if (TexIndex != -1) { C3Texture.Texture_Unload(TexIndex); TexIndex = -1; }
