@@ -3,6 +3,7 @@ using C3Studio.Core.Services;
 using C3Studio.MonoGame;
 using System;
 using System.Collections.ObjectModel;
+using System.Data;
 using System.IO;
 using System.Windows.Forms;
 using System.Windows.Input;
@@ -686,6 +687,18 @@ public class WorkspaceViewModel : ViewModelBase
     private AssetNode BuildArmorNode(ArmorTypeInfo armor)
     {
         var (meshPaths, texturePaths, asb, adb) = BuildMeshArraysForArmor(armor);
+        var motions = new List<MotionData>();
+        
+        TryAddMotion(motions, "StandBy", (ulong)(armor.Look * 1_000_000) + (int)RoleActionType.StandBy);        
+        // ── Look-based motions ─────────────────────────────────────────
+        // Mirrors C3DRole::SetAction: idBodyMotion = look * 1_000_000 + actionType
+        for (int i = 0; i < 999; i++)
+        {
+            RoleActionType action = (RoleActionType)i;
+            string name = action.ToString();
+            ulong idBodyMotion = (ulong)(armor.Look * 1_000_000 + (int)action);           
+            TryAddMotion(motions, name, idBodyMotion);
+        }
 
         var node = new AssetNode
         {
@@ -695,6 +708,7 @@ public class WorkspaceViewModel : ViewModelBase
             {
                 MeshPaths = meshPaths,
                 TexturePaths = texturePaths,
+                Motions = motions.ToArray(),
                 Asb = asb,
                 Adb = adb,
             }
@@ -714,6 +728,7 @@ public class WorkspaceViewModel : ViewModelBase
                     {
                         MeshPaths = [meshPaths[i]],
                         TexturePaths = [texturePaths[i]],
+                        Motions = motions.ToArray(),
                         Asb = [asb[i]],
                         Adb = [adb[i]],
                     }
@@ -1376,8 +1391,9 @@ public class WorkspaceViewModel : ViewModelBase
             TryAddMotion(motions, "StandBy", (ulong)(role.Look * 1_000_000 + (int)RoleActionType.StandBy));
             // ── Look-based motions ─────────────────────────────────────────
             // Mirrors C3DRole::SetAction: idBodyMotion = look * 1_000_000 + actionType
-            foreach (RoleActionType action in Enum.GetValues(typeof(RoleActionType)))
+            for (int i = 0; i < 999; i++)
             {
+                RoleActionType action = (RoleActionType)i;
                 string name = action.ToString();
                 ulong idBodyMotion = (ulong)(role.Look * 1_000_000 + (int)action);
                 TryAddMotion(motions, name, idBodyMotion);
