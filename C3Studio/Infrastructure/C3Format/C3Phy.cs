@@ -300,7 +300,7 @@ public class C3Phy : IDisposable
         bool at = AlphaTriCount > 0;
 
         if (!tn && !at) return;
-                
+
         gd.RasterizerState = TwoSided
             ? RasterizerState.CullNone
             : RasterizerState.CullClockwise;
