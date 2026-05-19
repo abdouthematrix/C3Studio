@@ -267,6 +267,8 @@ public class C3Phy : IDisposable
             ? RasterizerState.CullNone
             : RasterizerState.CullClockwise;
 
+        gd.BlendState = C3BlendHelper.Resolve(BlendAsb, BlendAdb);
+
         var fx = _alphaTestEffect!;
         fx.View = view;
         fx.Projection = projection;
