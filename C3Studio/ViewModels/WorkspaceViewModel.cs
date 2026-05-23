@@ -1196,8 +1196,6 @@ public class WorkspaceViewModel : ViewModelBase
         return root;
     }
 
-
-
     private AssetNode BuildWeaponNode(WeaponTypeInfo weapon)
     {
         var (meshPaths, texturePaths, asb, adb) = BuildMeshArraysForWeapon(weapon);
@@ -1323,6 +1321,16 @@ public class WorkspaceViewModel : ViewModelBase
     private AssetNode BuildMountNode(MountTypeInfo mount)
     {
         var (meshPaths, texturePaths, asb, adb) = BuildMeshArraysForMount(mount);
+        var motions = new List<MotionData>();        
+        TryAddMountMotion(motions, "StandBy", (ulong)mount.SubType * 10_000, (int)RoleActionType.StandBy);
+        // ── Look-based motions ─────────────────────────────────────────
+        // Mirrors C3DRole::SetAction: idBodyMotion = look * 1_000_000 + actionType
+        for (int i = 0; i < 999; i++)
+        {
+            RoleActionType action = (RoleActionType)i;
+            string name = action.ToString();            
+            TryAddMountMotion(motions, name, (ulong)mount.SubType * 10_000, (int)action);
+        }
 
         var node = new AssetNode
         {
@@ -1331,7 +1339,8 @@ public class WorkspaceViewModel : ViewModelBase
             AssetData = new AssetData
             {
                 MeshPaths = meshPaths,
-                TexturePaths = texturePaths,
+                TexturePaths = texturePaths,  
+                Motions = motions.ToArray(),
                 Asb = asb,
                 Adb = adb,
             }
@@ -2134,6 +2143,13 @@ public class WorkspaceViewModel : ViewModelBase
     {
         if (id == 0) return;
         var path = _gameData.ResolveMotion(id);
+        if (path != null)
+            entries.Add(new MotionData(label, path));
+    }
+    private void TryAddMountMotion(List<MotionData> entries, string label, ulong id, int action)
+    {
+        if (id == 0) return;
+        var path = _gameData.ResolveMountMotion(id, action);
         if (path != null)
             entries.Add(new MotionData(label, path));
     }

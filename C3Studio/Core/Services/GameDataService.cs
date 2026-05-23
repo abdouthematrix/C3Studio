@@ -166,7 +166,7 @@ public class GameDataService : IGameDataService
                 && MotionMap.TryGetValue(key2, out var path2))
                 return path2;
         }
-        if (s.Length > 7)
+        if (s.Length >= 7)
         {
             var stripped = s.Insert(4, "0");
             if (ulong.TryParse(stripped, out var key2)
