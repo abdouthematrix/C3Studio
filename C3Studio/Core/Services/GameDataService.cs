@@ -1,5 +1,6 @@
 using C3Studio.Core.Models;
 using C3Studio.Infrastructure.Ini;
+using System.Formats.Tar;
 using System.IO;
 
 namespace C3Studio.Core.Services;
@@ -47,6 +48,9 @@ public interface IGameDataService
     SimpleRoleTypeInfo? FindSimpleRole(int index);              // ← NEW
     uint ResolveItemTexture(uint itemId, ItemColor color);
     uint ResolveItemTexture(uint itemId, byte colorValue);
+    IReadOnlyDictionary<int, MagicSkillGroup> MagicSkills { get; }
+    MagicSkillGroup? FindMagicSkill(int baseId);
+    TmeEntry[] ResolveTme(string tmeKey);
 }
 
 public class GameDataService : IGameDataService
@@ -86,15 +90,29 @@ public class GameDataService : IGameDataService
     public IReadOnlyDictionary<ulong, string> WeaponMotionMap => _weaponMotion;
     public IReadOnlyDictionary<ulong, string> MountMotionMap => _mountMotion;
 
+    private Dictionary<int, MagicSkillGroup> _magicSkills = new();
+    public IReadOnlyDictionary<int, MagicSkillGroup> MagicSkills => _magicSkills;
+
     private string _loadedPath = string.Empty;
+    private string _iniPath = string.Empty;
+
+    // Cache: tme key (lowercase, no extension) → parsed entries
+    private readonly Dictionary<string, TmeEntry[]> _tmeCache = new(
+        StringComparer.OrdinalIgnoreCase);
+
+    // Candidate directories, searched in order
+    private static readonly string[] s_tmeDirs =
+        ["TerrainMagic", "tme"];
 
     private static Dictionary<ulong, string> Cast(Dictionary<ulong, string> d) => d;
 
     public Task LoadAsync(string conquerPath) => Task.Run(() =>
     {
         if (_loadedPath == conquerPath) return;
+        _iniPath = Path.Combine(conquerPath, "ini");
+        _tmeCache.Clear();
 
-        string Ini(string f) => Path.Combine(conquerPath, "ini", f);
+        string Ini(string f) => Path.Combine(_iniPath, f);
 
         _npcs = NpcIniParser.Parse(Ini("npc.ini"));
         _simpleObjs = SimpleObjIniParser.Parse(Ini("3DSimpleObj.ini"));
@@ -122,6 +140,8 @@ public class GameDataService : IGameDataService
         _weaponMotion = Cast(ResIniParser.Parse(Ini("WeaponMotion.ini")));
         _mountMotion = Cast(ResIniParser.Parse(Ini("MountMotion.ini")));
         _loadedPath = conquerPath;
+
+        _magicSkills = MagicEffectIniParser.Parse(Ini("MagicEffect.ini"));
     });
 
     // ── Basic resolvers (go through the public property, not the backing field) ──
@@ -285,4 +305,36 @@ public class GameDataService : IGameDataService
     /// <inheritdoc cref="ResolveItemTexture(uint,ItemColor)"/>
     public uint ResolveItemTexture(uint itemId, byte colorValue)
         => FindItemTexture(itemId)?.GetTexture(colorValue) ?? 0;
+
+    /// <summary>Returns the skill group whose base ID equals <paramref name="baseId"/>.</summary>
+    public MagicSkillGroup? FindMagicSkill(int baseId)
+        => _magicSkills.GetValueOrDefault(baseId);
+
+    public TmeEntry[] ResolveTme(string tmeKey)
+    {
+        // Strip optional .tme extension for the cache key
+        string cacheKey = tmeKey.EndsWith(".tme", StringComparison.OrdinalIgnoreCase)
+            ? tmeKey[..^4]
+            : tmeKey;
+
+        if (_tmeCache.TryGetValue(cacheKey, out var cached))
+            return cached;
+
+        string fileName = cacheKey + ".tme";
+
+        foreach (var dir in s_tmeDirs)
+        {
+            string fullPath = Path.Combine(_iniPath, dir, fileName);
+
+            if (!File.Exists(fullPath))
+                continue;
+
+            var entries = TmeParser.Parse(fullPath);
+            _tmeCache[cacheKey] = entries;
+            return entries;
+        }
+
+        _tmeCache[cacheKey] = [];
+        return [];
+    }
 }

@@ -309,11 +309,12 @@ public class WorkspaceViewModel : ViewModelBase
             await _gameData.LoadAsync(_settings.ConquerPath);
             BuildAssetTree();
             StatusMessage = $"Ready — {_gameData.Npcs.Count} NPCs, {_gameData.SimpleObjs.Count} objects, " +
-                            $"{_gameData.SimpleRoles.Count} roles, " +
-                            $"{_gameData.Effects.Count} effects, {_gameData.Armors.Count} armors, " +
-                            $"{_gameData.Armets.Count} armets, {_gameData.Weapons.Count} weapons, " +
-                            $"{_gameData.Transforms.Count} transforms, {_gameData.Mounts.Count} mounts, " +
-                            $"{_gameData.ItemTextures.Count} item textures.";
+                $"{_gameData.SimpleRoles.Count} roles, " +
+                $"{_gameData.Effects.Count} effects, {_gameData.MagicSkills.Count} magic skills, " +
+                $"{_gameData.Armors.Count} armors, " +
+                $"{_gameData.Armets.Count} armets, {_gameData.Weapons.Count} weapons, " +
+                $"{_gameData.Transforms.Count} transforms, {_gameData.Mounts.Count} mounts, " +
+                $"{_gameData.ItemTextures.Count} item textures.";
         }
         catch (Exception ex)
         {
@@ -338,6 +339,7 @@ public class WorkspaceViewModel : ViewModelBase
         AssetTree.Add(BuildSimpleObjRoot());
         AssetTree.Add(BuildSimpleRoleRoot());
         AssetTree.Add(BuildEffectRoot());
+        AssetTree.Add(BuildMagicSkillRoot());
         AssetTree.Add(BuildArmorRoot());
         AssetTree.Add(BuildArmetRoot());
         AssetTree.Add(BuildWeaponRoot());
@@ -612,6 +614,237 @@ public class WorkspaceViewModel : ViewModelBase
         return node;
     }
 
+    // ── Magic Skill tree ──────────────────────────────────────────────────
+
+    /// <summary>
+    /// Root node: "🔮 Magic Skills (N)"
+    ///
+    /// Tree layout:
+    ///   🔮 Magic Skills
+    ///     └── 🔮 [100000] Thunder          ← base group — combined AssetData of all resolved effects
+    ///          ├── 🎨 [Skin 1] ChasingFire ← skin override child (only when NameN keys exist)
+    ///          ├── 🎨 [Skin 2] Aspired-PrairieFire
+    ///          └── 📶 [100001]             ← level child (shown when effects differ from base)
+    ///               └── (per-effect children if multi-effect)
+    /// </summary>
+    private AssetNode BuildMagicSkillRoot()
+    {
+        var root = new AssetNode
+        {
+            Icon = "🔮",
+            Label = $"Magic Skills ({_gameData.MagicSkills.Count})"
+        };
+
+        foreach (var (baseId, group) in _gameData.MagicSkills)
+            root.Children.Add(BuildMagicSkillGroupNode(baseId, group));
+
+        return root;
+    }
+
+    private AssetNode BuildMagicSkillGroupNode(int baseId, MagicSkillGroup group)
+    {
+        var baseEffect = group.Levels.GetValueOrDefault(baseId);
+        string baseName = baseEffect?.Name ?? string.Empty;
+        string label = string.IsNullOrWhiteSpace(baseName)
+                            ? $"[{baseId}]"
+                            : $"[{baseId}] {baseName}";
+
+        // Collect all effect-field assets for the base level.
+        var (baseMeshes, baseTextures, baseAsb, baseAdb, baseEffectParts) =
+            ResolveMagicEffectParts(baseEffect);
+
+        var node = new AssetNode
+        {
+            Icon = "🔮",
+            Label = label,
+            AssetData = baseMeshes.Length > 0
+                ? new AssetData
+                {
+                    MeshPaths = baseMeshes,
+                    TexturePaths = baseTextures,
+                    Asb = baseAsb,
+                    Adb = baseAdb,
+                }
+                : null
+        };
+
+        // ── Per-effect-field children (only when base has multiple effect refs) ──
+        if (baseEffectParts.Count > 1)
+            foreach (var (fieldLabel, data) in baseEffectParts)
+                node.Children.Add(new AssetNode
+                {
+                    Icon = "✨",
+                    Label = fieldLabel,
+                    AssetData = data,
+                });
+
+        // ── Skin children ─────────────────────────────────────────────────────
+        // Skins exist when the ini contains Name1, Name2, … (stored by MagicEffectLoader).
+        foreach (var (skinId, overrides) in group.Skins.OrderBy(s => s.Key))
+        {
+            var skinEffect = group.GetEffect(baseId, skinId);
+            string skinName = overrides.TryGetValue("Name", out var n) ? n : $"Skin {skinId}";
+
+            var (sMeshes, sTextures, sAsb, sAdb, sEffectParts) =
+                ResolveMagicEffectParts(skinEffect);
+
+            var skinNode = new AssetNode
+            {
+                Icon = "🎨",
+                Label = $"[Skin {skinId}] {skinName}",
+                AssetData = sMeshes.Length > 0
+                    ? new AssetData
+                    {
+                        MeshPaths = sMeshes,
+                        TexturePaths = sTextures,
+                        Asb = sAsb,
+                        Adb = sAdb,
+                    }
+                    : null
+            };
+
+            if (sEffectParts.Count > 1)
+                foreach (var (fieldLabel, data) in sEffectParts)
+                    skinNode.Children.Add(new AssetNode
+                    {
+                        Icon = "✨",
+                        Label = fieldLabel,
+                        AssetData = data,
+                    });
+
+            node.Children.Add(skinNode);
+        }
+
+        // ── Level children ────────────────────────────────────────────────────
+        // Show every non-base level; inherit from base (MagicEffectLoader already cloned).
+        foreach (var (lvlId, lvlEffect) in group.Levels
+                                                .Where(kv => kv.Key != baseId)
+                                                .OrderBy(kv => kv.Key))
+        {
+            var (lMeshes, lTextures, lAsb, lAdb, lEffectParts) =
+                ResolveMagicEffectParts(lvlEffect);
+
+            // Only promote to loadable if the level's effects differ visually from base.
+            bool visuallyDistinct = !MagicEffectKeysEqual(baseEffect, lvlEffect);
+
+            var lvlNode = new AssetNode
+            {
+                Icon = "📶",
+                Label = $"[{lvlId}]",
+                AssetData = visuallyDistinct && lMeshes.Length > 0
+                    ? new AssetData
+                    {
+                        MeshPaths = lMeshes,
+                        TexturePaths = lTextures,
+                        Asb = lAsb,
+                        Adb = lAdb,
+                    }
+                    : null
+            };
+
+            node.Children.Add(lvlNode);
+        }
+
+        return node;
+    }
+
+    /// <summary>
+    /// Resolves every 3D-effect field of <paramref name="effect"/> into mesh/texture arrays,
+    /// returning both the combined flat arrays (for the node's AssetData) and
+    /// a per-field list for optional child-node expansion.
+    /// </summary>
+    private (string[] Meshes, string[] Textures, int[] Asb, int[] Adb,
+             List<(string Label, AssetData Data)> Parts)
+        ResolveMagicEffectParts(MagicEffect? effect)
+    {
+        var parts = new List<(string Label, AssetData Data)>();
+
+        if (effect == null)
+            return ([], [], [], [], parts);
+
+        // All string fields that reference a C3DEffect key.
+        // We capture both the human-readable label and the key value.
+        var effectRefs = new (string Label, string? Key)[]
+        {
+        ("IntoneEffect",                        effect.IntoneEffect),
+        ("TraceEffect",                         effect.TraceEffect),
+        ("Role3DEffectOfAttacker",              effect.Role3DEffectOfAttacker),
+        ("Role3DEffectOfAttaker",               effect.Role3DEffectOfAttaker),
+        ("Role3DEffectOfAffectTarget",          effect.Role3DEffectOfAffectTarget),
+        ("Role3DEffectOfTarget",                effect.Role3DEffectOfTarget),
+        ("Role3DEffectOfTargetHit",             effect.Role3DEffectOfTargetHit),
+        ("Role3DEffectOfTargetMiss",            effect.Role3DEffectOfTargetMiss),
+        ("Role3DEffectOfTargetExtraCmdBegin",   effect.Role3DEffectOfTargetExtraCmdBegin),
+        ("TerrainEffect",                       effect.TerrainEffect),
+        ("MapEffect",                           effect.MapEffect),
+        ("WarningEffectOfTarget",               effect.WarningEffectOfTarget),
+        ("WarningEffOnTarget",                  effect.WarningEffOnTarget),
+        };
+
+        // Deduplicate keys so the same effect isn't resolved twice.
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        var allMeshes = new List<string>();
+        var allTextures = new List<string>();
+        var allAsb = new List<int>();
+        var allAdb = new List<int>();
+
+        foreach (var (fieldLabel, key) in effectRefs)
+        {
+            if (string.IsNullOrWhiteSpace(key)) continue;
+            if (!seen.Add(key)) continue;           // already resolved
+
+            var (meshes, textures, asb, adb) = BuildEffectParts(key);
+            if (meshes.Length == 0)
+                continue;       // effect key not found or no mesh
+
+            var partData = new AssetData
+            {
+                MeshPaths = meshes,
+                TexturePaths = textures,
+                Asb = asb,
+                Adb = adb,
+            };
+
+            parts.Add(($"{fieldLabel}: {key}", partData));
+
+            allMeshes.AddRange(meshes);
+            allTextures.AddRange(textures);
+            allAsb.AddRange(asb);
+            allAdb.AddRange(adb);
+        }
+
+        return (allMeshes.ToArray(), allTextures.ToArray(),
+                allAsb.ToArray(), allAdb.ToArray(), parts);
+    }
+
+    /// <summary>
+    /// Returns <c>true</c> when every 3D-effect key field is identical between
+    /// <paramref name="a"/> and <paramref name="b"/> (case-insensitive).
+    /// Used to decide whether a level child needs its own AssetData.
+    /// </summary>
+    private static bool MagicEffectKeysEqual(MagicEffect? a, MagicEffect? b)
+    {
+        if (a is null && b is null) return true;
+        if (a is null || b is null) return false;
+
+        static bool Eq(string? x, string? y) =>
+            string.Equals(x, y, StringComparison.OrdinalIgnoreCase);
+
+        return Eq(a.IntoneEffect, b.IntoneEffect)
+            && Eq(a.TraceEffect, b.TraceEffect)
+            && Eq(a.Role3DEffectOfAttacker, b.Role3DEffectOfAttacker)
+            && Eq(a.Role3DEffectOfAttaker, b.Role3DEffectOfAttaker)
+            && Eq(a.Role3DEffectOfAffectTarget, b.Role3DEffectOfAffectTarget)
+            && Eq(a.Role3DEffectOfTarget, b.Role3DEffectOfTarget)
+            && Eq(a.Role3DEffectOfTargetHit, b.Role3DEffectOfTargetHit)
+            && Eq(a.Role3DEffectOfTargetMiss, b.Role3DEffectOfTargetMiss)
+            && Eq(a.Role3DEffectOfTargetExtraCmdBegin, b.Role3DEffectOfTargetExtraCmdBegin)
+            && Eq(a.TerrainEffect, b.TerrainEffect)
+            && Eq(a.MapEffect, b.MapEffect)
+            && Eq(a.WarningEffectOfTarget, b.WarningEffectOfTarget)
+            && Eq(a.WarningEffOnTarget, b.WarningEffOnTarget);
+    }
     // ── Armor tree ────────────────────────────────────────────────────────
 
     private string GetLookLabel(int look) => look switch
@@ -1812,27 +2045,57 @@ public class WorkspaceViewModel : ViewModelBase
     /// </summary>
     private (string[] Meshes, string[] Textures, int[] Asb, int[] Adb) BuildEffectParts(string effectKey)
     {
-        var effect = _gameData.FindEffect(effectKey);
-        if (effect == null || effect.Amount == 0) return ([], [], [], []);
-
-        var meshes = new List<string>(effect.Amount);
-        var textures = new List<string>(effect.Amount);
-        var asb = new List<int>(effect.Amount);
-        var adb = new List<int>(effect.Amount);
-
-        for (int i = 0; i < effect.Amount; i++)
+        if (effectKey.EndsWith(".tme", StringComparison.OrdinalIgnoreCase))
         {
-            var mesh = _gameData.ResolveEffectObj(effect.EffectIds[i]);
-            if (string.IsNullOrEmpty(mesh)) continue;   // unresolvable slot — skip
+            var tmeEntries = _gameData.ResolveTme(effectKey);
 
-            meshes.Add(mesh);
-            textures.Add(_gameData.ResolveTexture((ulong)effect.TextureIds[i])
-                         ?? $"? ({effect.TextureIds[i]})");
-            asb.Add(effect.Asb[i]);
-            adb.Add(effect.Adb[i]);
+            var meshPaths = new List<string>();
+            var texturePaths = new List<string>();
+            var asb = new List<int>();
+            var adb = new List<int>();
+
+            foreach (var entry in tmeEntries)
+            {
+                var (m, t, a, d) = BuildEffectParts(entry.EffectKey);
+
+                for (int i = 0; i < m.Length; i++)
+                {
+                    meshPaths.Add(m[i]);
+                    texturePaths.Add(i < t.Length ? t[i] : string.Empty);
+                    asb.Add(i < a.Length ? a[i] : 5);
+                    adb.Add(i < d.Length ? d[i] : 6);
+                }
+            }
+            return ([.. meshPaths],
+                [.. texturePaths],
+                [.. asb],
+                [.. adb]
+            );
         }
+        else
+        {
+            var effect = _gameData.FindEffect(effectKey);
+            if (effect == null || effect.Amount == 0) return ([], [], [], []);
 
-        return (meshes.ToArray(), textures.ToArray(), asb.ToArray(), adb.ToArray());
+            var meshes = new List<string>(effect.Amount);
+            var textures = new List<string>(effect.Amount);
+            var asb = new List<int>(effect.Amount);
+            var adb = new List<int>(effect.Amount);
+
+            for (int i = 0; i < effect.Amount; i++)
+            {
+                var mesh = _gameData.ResolveEffectObj(effect.EffectIds[i]);
+                if (string.IsNullOrEmpty(mesh)) continue;   // unresolvable slot — skip
+
+                meshes.Add(mesh);
+                textures.Add(_gameData.ResolveTexture((ulong)effect.TextureIds[i])
+                             ?? $"? ({effect.TextureIds[i]})");
+                asb.Add(effect.Asb[i]);
+                adb.Add(effect.Adb[i]);
+            }
+
+            return (meshes.ToArray(), textures.ToArray(), asb.ToArray(), adb.ToArray());
+        }
     }
 
     private MotionData[] BuildMotionEntries(NpcTypeInfo npc)
