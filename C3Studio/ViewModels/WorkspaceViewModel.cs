@@ -635,8 +635,31 @@ public class WorkspaceViewModel : ViewModelBase
             Label = $"Magic Skills ({_gameData.MagicSkills.Count})"
         };
 
-        foreach (var (baseId, group) in _gameData.MagicSkills)
-            root.Children.Add(BuildMagicSkillGroupNode(baseId, group));
+        // Group the dictionary entries by the SortOfAct of their first level
+        var groupedSkills = _gameData.MagicSkills
+            .GroupBy(kvp => kvp.Value.Levels.Values.FirstOrDefault()?.SortOfAct);
+
+        foreach (var sortGroup in groupedSkills)
+        {
+            // Handle potential nulls if a group somehow has no levels
+            string sortLabel = sortGroup.Key?.ToString() ?? "Unknown";
+
+            var sortNode = new AssetNode
+            {
+                Icon = "📁",
+                Label = $"{sortLabel} ({sortGroup.Count()})"
+            };
+
+            foreach (var (baseId, group) in sortGroup)
+            {
+                sortNode.Children.Add(BuildMagicSkillGroupNode(baseId, group));
+            }
+
+            root.Children.Add(sortNode);
+        }
+
+        // Optional: Alphabetize the folders so they appear in a consistent order
+        // root.Children = root.Children.OrderBy(c => c.Label).ToList();
 
         return root;
     }

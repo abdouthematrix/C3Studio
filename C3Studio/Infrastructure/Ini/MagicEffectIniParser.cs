@@ -175,6 +175,7 @@ internal static class MagicEffectReflection
                                                 System.Globalization.NumberStyles.Float,
                                                 System.Globalization.CultureInfo.InvariantCulture,
                                                 out float f) ? f : 0f,
+            var t when t == typeof(MagicSort) => MagicSort.TryParse(rawValue, out MagicSort i) ? i: default,
             _ => rawValue,
         };
 
