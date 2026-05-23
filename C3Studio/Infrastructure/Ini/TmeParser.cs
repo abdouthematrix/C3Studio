@@ -31,9 +31,9 @@ public static class TmeParser
             {
                 EffectKey = key,
                 Delay = br.ReadUInt32(),
-                Reserved = br.ReadUInt32(),
-                Duration = br.ReadInt32(),
-                Interval = br.ReadInt32(),
+                RandomDelay = br.ReadUInt32(),
+                OffsetX = br.ReadInt32(),
+                OffsetY = br.ReadInt32(),
             };
         }
 
