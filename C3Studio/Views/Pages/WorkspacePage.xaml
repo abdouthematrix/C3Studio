@@ -580,6 +580,44 @@
                             </StackPanel>
                         </Border>
 
+                        <!--  Section: MESH VISIBILITY  -->
+                        <TextBlock
+                            Margin="4,12,4,4"
+                            Style="{StaticResource SectionLabel}"
+                            Text="MESH VISIBILITY" />
+                        <Border
+                            Margin="0,0,0,12"
+                            Padding="14,10"
+                            Style="{StaticResource Card}">
+                            <StackPanel>
+                                <!--  Toggle All Checkbox  -->
+                                <CheckBox
+                                    Content="Toggle All"
+                                    IsChecked="{Binding MeshSlotsAreAllVisible, Mode=TwoWay}"
+                                    Style="{StaticResource DarkCheckBox}" />
+
+                                <!--  Your ListBox  -->
+                                <ListBox
+                                    MaxHeight="180"
+                                    ItemsSource="{Binding MeshSlots}"
+                                    Style="{StaticResource NpcListBox}"
+                                    Visibility="{Binding MeshSlots.Count, Converter={StaticResource ZeroToCollapsed}}">
+                                    <ListBox.ItemTemplate>
+                                        <DataTemplate>
+                                            <StackPanel Margin="2,4" VerticalAlignment="Center">
+                                                <CheckBox
+                                                    Content="{Binding Name}"
+                                                    IsChecked="{Binding IsVisible, Mode=TwoWay}"
+                                                    Style="{StaticResource DarkCheckBox}" />
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ListBox.ItemTemplate>
+                                </ListBox>
+                            </StackPanel>
+
+                        </Border>
+
+
                         <!--  Section: File  -->
                         <TextBlock
                             Margin="0,8,0,10"

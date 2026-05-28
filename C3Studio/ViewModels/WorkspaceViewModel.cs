@@ -30,6 +30,19 @@ public class WorkspaceViewModel : ViewModelBase
     private string _frameLabel = "0 / 0";
     private string _playPauseLabel = "⏸";
     private float _fps = 30f;
+    public ObservableCollection<MeshSlotViewModel> MeshSlots { get; } = new();    
+    private bool _meshSlotsAreAllVisible;
+    public bool MeshSlotsAreAllVisible
+    {
+        get => MeshSlots.All(s => s.IsVisible);
+        set
+        {
+            foreach (var slot in MeshSlots)            
+                slot.IsVisible = value;            
+            Set(ref _meshSlotsAreAllVisible, value);
+        }
+    }
+
     private AssetNode? _selectedNode;
 
     public ObservableCollection<AssetNode> AssetTree { get; } = new();
@@ -325,7 +338,25 @@ public class WorkspaceViewModel : ViewModelBase
     {
         _game = game;
         _game.FrameChanged += OnFrameChanged;
+        _game.ModelLoaded += OnModelLoaded;
         _game.SetFps(_fps);
+    }
+    private void OnModelLoaded()
+    {
+        System.Windows.Application.Current.Dispatcher.Invoke(() =>
+        {
+            MeshSlots.Clear();
+            if (_game == null) return;
+
+            foreach (var name in _game.GetMeshNames())
+            {
+                MeshSlots.Add(new MeshSlotViewModel(
+                    name,
+                    _game.GetMeshVisibility(name),
+                    (slotName, isVisible) => _game.SetMeshVisibility(slotName, isVisible)
+                ));
+            }
+        });
     }
 
     // ── Asset tree construction ───────────────────────────────────────────

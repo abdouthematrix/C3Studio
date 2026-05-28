@@ -29,17 +29,76 @@ public class C3Renderer : IDisposable
     private double _frameTimer;
     private double _secondsPerFrame = 1.0 / 30.0;
 
-    // ── Equipment slot blacklist (mirrors C++ Draw/DrawAlpha skip-list) ───
-    // Note: _V_ARMET="v_head" and _V_HEAD="v_armet" are intentionally swapped,
-    // faithfully replicating the naming inconsistency in the original C++ constants.
-    private static readonly HashSet<string> EquipmentSlots = new(
-        ["v_head", "v_misc", "v_l_weapon", "v_r_weapon",
-         "v_l_shield", "v_r_shield", "v_l_shoe", "v_r_shoe",
-         "v_pet", "v_back", "v_armet",
-         "v_l_arm", "v_r_arm", "v_l_leg", "v_r_leg", "v_mantle"],
-        StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, bool> _meshVisibility = new(StringComparer.OrdinalIgnoreCase);
 
-    private bool IsMeshVisible(C3Phy phy) => !EquipmentSlots.Contains(phy.Name);
+    private static readonly HashSet<string> DefaultHiddenSlots = new(
+     [
+        "V_ARMET_EFFECT01",
+        "V_ARMET_EFFECT02",
+        "v_armet",
+        "v_back",
+        "v_extend1",
+        "v_extend10",
+        "v_extend11",
+        "v_extend12",
+        "v_extend13",
+        "v_extend14",
+        "v_extend15",
+        "v_extend2",
+        "v_extend3",
+        "v_extend4",
+        "v_extend5",
+        "v_extend6",
+        "v_extend7",
+        "v_extend8",
+        "v_extend9",
+        "v_hair",
+        "v_head",
+        "v_hit",
+        "v_l_arm",
+        "v_l_flap",
+        "v_l_foot",
+        "v_l_forearm",
+        "v_l_leg",
+        "v_l_shield",
+        "v_l_shoulder",
+        "v_l_slot01",
+        "v_l_slot02",
+        "v_l_weapon",
+        "v_mantle",
+        "v_misc",
+        "v_mount",
+        "v_mount_01",
+        "v_pelvis",
+        "v_pet",
+        "v_r_arm",
+        "v_r_flap",
+        "v_r_foot",
+        "v_r_forearm",
+        "v_r_leg",
+        "v_r_shield",
+        "v_r_shoulder",
+        "v_r_slot01",
+        "v_r_slot02",
+        "v_r_weapon",
+        "v_rootloc",
+        "v_shell",
+        "v_slot",
+        "v_wsocket1",
+        "v_wsocket2",
+        "v_wsocket3",
+        "v_zero",
+        "v_l_shoe",
+        "v_r_shoe"
+     ],
+     StringComparer.OrdinalIgnoreCase);
+
+
+    private bool IsMeshVisible(C3Phy phy) =>
+    _meshVisibility.TryGetValue(phy.Name, out bool visible) ? visible : true;
+    public IEnumerable<string> GetPhyNames() => _meshVisibility.Keys;
+    public bool GetPhyVisibility(string name) => _meshVisibility.TryGetValue(name, out bool v) ? v : true;
+    public void SetPhyVisibility(string name, bool visible) => _meshVisibility[name] = visible;
 
     // ─────────────────────────────────────────────────────────────────────
     public bool IsPlaying { get; set; } = true;
@@ -62,8 +121,15 @@ public class C3Renderer : IDisposable
         ApplyWorldRotation(worldRotation);
         _model.Calculate();
 
+        // Populate the visibility dictionary with discovered slots
+        _meshVisibility.Clear();
         foreach (var phy in _model.Phys)
         {
+            if (!_meshVisibility.ContainsKey(phy.Name))
+            {
+                // Default them to hidden if they match the original blacklist
+                _meshVisibility[phy.Name] = !DefaultHiddenSlots.Contains(phy.Name);
+            }
             phy.InitializeGPU(_gd);
             phy.GpuTexture = C3Texture.Get(phy.TexIndex)?.Texture;
         }

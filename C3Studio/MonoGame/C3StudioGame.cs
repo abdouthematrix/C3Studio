@@ -33,6 +33,12 @@ public class C3StudioGame : WpfGame
     // ── Events ────────────────────────────────────────────────────────────
     public event Action<int, int>? FrameChanged;
 
+
+    public event Action? ModelLoaded;
+    public IEnumerable<string> GetMeshNames() => _renderer?.GetPhyNames() ?? Array.Empty<string>();
+    public bool GetMeshVisibility(string name) => _renderer?.GetPhyVisibility(name) ?? true;
+    public void SetMeshVisibility(string name, bool visible) => _renderer?.SetPhyVisibility(name, visible);
+
     // ── Playback ──────────────────────────────────────────────────────────
     public bool IsPlaying { get; set; } = true;
     public void SetFps(float fps) { if (_renderer != null) _renderer.Fps = fps; }
@@ -159,6 +165,7 @@ public class C3StudioGame : WpfGame
             }
 
             AutoFitCamera(model);
+            ModelLoaded?.Invoke();
         }
         catch (Exception ex)
         {
@@ -187,6 +194,7 @@ public class C3StudioGame : WpfGame
 
             _renderer.LoadModelDirect(model, WorldCorrection);
             AutoFitCamera(model);
+            ModelLoaded?.Invoke();
         }
         catch (Exception ex)
         {

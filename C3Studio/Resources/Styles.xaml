@@ -1,6 +1,6 @@
 <ResourceDictionary
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"    
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:cv="clr-namespace:C3Studio.Converters">
 
     <!--
@@ -228,6 +228,56 @@
         <Setter Property="ItemContainerStyle" Value="{StaticResource NpcListItem}" />
     </Style>
 
+    <Style x:Key="DarkCheckBox" TargetType="CheckBox">
+        <Setter Property="Foreground" Value="{StaticResource Br.TextPrimary}" />
+        <Setter Property="FontFamily" Value="Segoe UI" />
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="CheckBox">
+                    <StackPanel
+                        VerticalAlignment="Center"
+                        Background="Transparent"
+                        Orientation="Horizontal">
+                        <Border
+                            x:Name="Box"
+                            Width="16"
+                            Height="16"
+                            Margin="0,0,8,0"
+                            Background="{StaticResource Br.BgDeep}"
+                            BorderBrush="{StaticResource Br.Border}"
+                            BorderThickness="1"
+                            CornerRadius="3">
+                            <Path
+                                x:Name="CheckMark"
+                                HorizontalAlignment="Center"
+                                VerticalAlignment="Center"
+                                Data="M 3,8 L 6,11 L 13,3"
+                                Stroke="{StaticResource Br.Gold}"
+                                StrokeEndLineCap="Round"
+                                StrokeLineJoin="Round"
+                                StrokeStartLineCap="Round"
+                                StrokeThickness="2"
+                                Visibility="Collapsed" />
+                        </Border>
+                        <ContentPresenter VerticalAlignment="Center" />
+                    </StackPanel>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsChecked" Value="True">
+                            <Setter TargetName="CheckMark" Property="Visibility" Value="Visible" />
+                            <Setter TargetName="Box" Property="BorderBrush" Value="{StaticResource Br.GoldDim}" />
+                        </Trigger>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Box" Property="Background" Value="{StaticResource Br.BgElevated}" />
+                            <Setter TargetName="Box" Property="BorderBrush" Value="{StaticResource Br.GoldDim}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
     <!--  ── ChipBadge (category tag) ───────────────────────────────────  -->
     <Style x:Key="ChipBadge" TargetType="Border">
         <Setter Property="Background" Value="{StaticResource Br.BgElevated}" />
@@ -427,19 +477,19 @@
 
     <!--  ── ContextMenu ─────────────────────────────────────────────────  -->
     <Style TargetType="ContextMenu">
-        <Setter Property="Background"   Value="{StaticResource Br.BgCard}" />
-        <Setter Property="BorderBrush"  Value="{StaticResource Br.Border}" />
+        <Setter Property="Background" Value="{StaticResource Br.BgCard}" />
+        <Setter Property="BorderBrush" Value="{StaticResource Br.Border}" />
         <Setter Property="BorderThickness" Value="1" />
-        <Setter Property="Padding"      Value="2" />
+        <Setter Property="Padding" Value="2" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="ContextMenu">
                     <Border
+                        Padding="{TemplateBinding Padding}"
                         Background="{TemplateBinding Background}"
                         BorderBrush="{TemplateBinding BorderBrush}"
                         BorderThickness="{TemplateBinding BorderThickness}"
                         CornerRadius="6"
-                        Padding="{TemplateBinding Padding}"
                         SnapsToDevicePixels="True">
                         <Border.Effect>
                             <DropShadowEffect
@@ -458,64 +508,65 @@
 
     <!--  ── MenuItem ──────────────────────────────────────────────────  -->
     <Style TargetType="MenuItem">
-        <Setter Property="Background"        Value="Transparent" />
-        <Setter Property="Foreground"        Value="{StaticResource Br.TextPrimary}" />
-        <Setter Property="FontFamily"        Value="Segoe UI" />
-        <Setter Property="FontSize"          Value="12" />
-        <Setter Property="Padding"           Value="12,7" />
-        <Setter Property="Cursor"            Value="Hand" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="Foreground" Value="{StaticResource Br.TextPrimary}" />
+        <Setter Property="FontFamily" Value="Segoe UI" />
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="Padding" Value="12,7" />
+        <Setter Property="Cursor" Value="Hand" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="MenuItem">
                     <Border
                         x:Name="Root"
-                        Background="{TemplateBinding Background}"
-                        CornerRadius="4"
                         Margin="2,1"
-                        Padding="{TemplateBinding Padding}">
+                        Padding="{TemplateBinding Padding}"
+                        Background="{TemplateBinding Background}"
+                        CornerRadius="4">
                         <Grid>
                             <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="16" />  <!-- icon slot -->
-                                <ColumnDefinition Width="8"  />  <!-- gap       -->
-                                <ColumnDefinition Width="*"  />  <!-- header    -->
-                                <ColumnDefinition Width="Auto"/> <!-- shortcut  -->
+                                <ColumnDefinition Width="16" />  
+                                <!--  icon slot  -->
+                                <ColumnDefinition Width="8" />  
+                                <!--  gap  -->
+                                <ColumnDefinition Width="*" />  
+                                <!--  header  -->
+                                <ColumnDefinition Width="Auto" /> 
+                                <!--  shortcut  -->
                             </Grid.ColumnDefinitions>
 
-                            <!-- Icon (optional) -->
+                            <!--  Icon (optional)  -->
                             <ContentPresenter
                                 Grid.Column="0"
-                                ContentSource="Icon"
-                                VerticalAlignment="Center"
                                 HorizontalAlignment="Center"
+                                VerticalAlignment="Center"
+                                ContentSource="Icon"
                                 SnapsToDevicePixels="True" />
 
-                            <!-- Header text -->
+                            <!--  Header text  -->
                             <ContentPresenter
                                 Grid.Column="2"
-                                ContentSource="Header"
                                 VerticalAlignment="Center"
+                                ContentSource="Header"
                                 RecognizesAccessKey="True" />
 
-                            <!-- Input gesture text -->
+                            <!--  Input gesture text  -->
                             <TextBlock
                                 Grid.Column="3"
                                 Margin="16,0,4,0"
                                 VerticalAlignment="Center"
-                                Foreground="{StaticResource Br.TextDim}"
                                 FontSize="11"
+                                Foreground="{StaticResource Br.TextDim}"
                                 Text="{TemplateBinding InputGestureText}" />
                         </Grid>
                     </Border>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsHighlighted" Value="True">
-                            <Setter TargetName="Root" Property="Background"
-                                    Value="{StaticResource Br.BgElevated}" />
-                            <Setter Property="Foreground"
-                                    Value="{StaticResource Br.Gold}" />
+                            <Setter TargetName="Root" Property="Background" Value="{StaticResource Br.BgElevated}" />
+                            <Setter Property="Foreground" Value="{StaticResource Br.Gold}" />
                         </Trigger>
                         <Trigger Property="IsEnabled" Value="False">
-                            <Setter Property="Foreground"
-                                    Value="{StaticResource Br.TextDim}" />
+                            <Setter Property="Foreground" Value="{StaticResource Br.TextDim}" />
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
@@ -525,8 +576,8 @@
 
     <!--  ── MenuSeparator ────────────────────────────────────────────────  -->
     <Style TargetType="Separator">
-        <Setter Property="Margin"      Value="8,3" />
-        <Setter Property="Background"  Value="{StaticResource Br.Border}" />
+        <Setter Property="Margin" Value="8,3" />
+        <Setter Property="Background" Value="{StaticResource Br.Border}" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="Separator">
