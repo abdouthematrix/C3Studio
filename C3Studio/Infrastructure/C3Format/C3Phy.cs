@@ -130,7 +130,7 @@ public class C3Phy : IDisposable
         phy.AlphaVertexCount = (int)br.ReadUInt32();
 
         int totalVerts = phy.NormalVertexCount + phy.AlphaVertexCount;
-        int morphMax = (chunkTag == "PHY3" || chunkTag == "PHY4") ? 1 : C3Constants.MorphMax;
+        int morphMax = (chunkTag == "PHY3" || chunkTag == "PHY4" || chunkTag == "PHY5") ? 1 : C3Constants.MorphMax;
 
         for (int i = 0; i < totalVerts; i++)
         {
@@ -142,6 +142,7 @@ public class C3Phy : IDisposable
             for (int b = 0; b < C3Constants.BoneMax; b++) v.BoneIndex[b] = (int)br.ReadUInt32();
             for (int b = 0; b < C3Constants.BoneMax; b++) v.BoneWeight[b] = br.ReadSingle();
             if (chunkTag == "PHY3") br.ReadBytes(12); // normal
+            if (chunkTag == "PHY5") br.ReadBytes(20); // normal
             phy.SourceVertices.Add(v);
             phy.OutputVertices.Add(new PhyOutVertex { Position = v.Positions[0], TexCoord = v.TexCoord });
         }
@@ -173,6 +174,15 @@ public class C3Phy : IDisposable
         byte[] f2 = br.ReadBytes(4);
         if (Encoding.ASCII.GetString(f2) == "2SID") phy.TwoSided = true;
         else br.BaseStream.Seek(-4, SeekOrigin.Current);
+
+        f1 = br.ReadBytes(5);
+        if (Encoding.ASCII.GetString(f1) == "STEP1")
+            phy.UVStep = new Vector2(br.ReadSingle(), br.ReadSingle());
+        else br.BaseStream.Seek(-5, SeekOrigin.Current);
+        f1 = br.ReadBytes(5);
+        if (Encoding.ASCII.GetString(f1) == "STEP2")
+            phy.UVStep = new Vector2(br.ReadSingle(), br.ReadSingle());
+        else br.BaseStream.Seek(-5, SeekOrigin.Current);
 
         return phy;
     }

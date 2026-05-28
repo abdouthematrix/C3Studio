@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.IO;
 using System.Text;
 using Microsoft.Xna.Framework;
@@ -12,8 +13,8 @@ namespace C3Studio.Infrastructure.C3Format;
 public partial class C3Model
 {
     internal const string ExpectedVersion = "MAXFILE C3 00001";
-    internal const int MaxPhys = 16;
-    internal const int MaxMotions = 16;
+    internal const int MaxPhys = 32;
+    internal const int MaxMotions = 32;
     public List<C3Phy> Phys { get; } = new();
     public List<C3Motion> Motions { get; } = new();
     public List<C3Omni> Omnis { get; } = new();
@@ -58,6 +59,7 @@ public partial class C3Model
                 case "PHY ":
                 case "PHY3":
                 case "PHY4":
+                case "PHY5":
                     if (model.Phys.Count < MaxPhys)
                         model.Phys.Add(C3Phy.Load(br, chunk.Tag));
                     else stream.Seek(chunk.ChunkSize, SeekOrigin.Current);
@@ -103,7 +105,14 @@ public partial class C3Model
                 case "CAME":
                     stream.Seek(chunk.ChunkSize, SeekOrigin.Current);
                     break;
+                case "CCFL":
+                    stream.Seek(chunk.ChunkSize, SeekOrigin.Current);
+                    break;
+                case "MNEW":
+                    stream.Seek(chunk.ChunkSize, SeekOrigin.Current);
+                    break;                
                 default:
+                    Debug.WriteLine($"Unknown chunk tag '{chunk.Tag}' at position {stream.Position - 8}. Skipping.");
                     stream.Seek(chunk.ChunkSize, SeekOrigin.Current);
                     break;
             }
