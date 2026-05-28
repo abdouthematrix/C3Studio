@@ -22,7 +22,8 @@ public class SetupViewModel : ViewModelBase
 
     // ── Required items ────────────────────────────────────────────────────
     private static readonly string[] RequiredFolders = ["ani", "c3", "data", "ini"];
-    private static readonly string[] RequiredWdf     = ["c3.wdf", "data.wdf"];
+    private static readonly string[] RequiredPackages = ["c3", "data"];
+    private static readonly string[] PackagesExtensions = { ".wdf", ".tpd", ".tpi", ".dnp" };
     private static readonly string[] RequiredIni     =
     [
         "npc.ini", "3DSimpleObj.ini", "3DEffect.ini",
@@ -89,8 +90,20 @@ public class SetupViewModel : ViewModelBase
         foreach (var f in RequiredFolders)
             AddItem("Folder", f, Directory.Exists(Path.Combine(ConquerPath, f)));
 
-        foreach (var w in RequiredWdf)
-            AddItem("Archive", w, File.Exists(Path.Combine(ConquerPath, w)));
+        foreach (var package in RequiredPackages)
+        {
+            bool exists = PackagesExtensions.Any(ext =>
+                File.Exists(Path.Combine(ConquerPath, package + ext)));
+
+            string foundExtension = PackagesExtensions.FirstOrDefault(ext =>
+                File.Exists(Path.Combine(ConquerPath, package + ext))) ?? string.Empty;
+
+            AddItem(
+                "Archive",
+                exists ? package + foundExtension : package,
+                exists
+            );
+        }
 
         foreach (var i in RequiredIni)
             AddItem("INI", i, File.Exists(Path.Combine(ConquerPath, "ini", i)));
