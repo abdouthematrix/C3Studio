@@ -10,12 +10,10 @@ public interface IGameDataService
     IReadOnlyList<NpcTypeInfo> Npcs { get; }
     IReadOnlyList<C3DSimpleObjInfo> SimpleObjs { get; }
     IReadOnlyList<C3DEffectInfo> Effects { get; }
-    IReadOnlyList<ArmorTypeInfo> Armors { get; }
-    IReadOnlyList<ArmetTypeInfo> Armets { get; }
-    IReadOnlyList<WeaponTypeInfo> Weapons { get; }
-    IReadOnlyList<TransformInfo> Transforms { get; }
-    IReadOnlyList<MountTypeInfo> Mounts { get; }
+    IReadOnlyList<RolePart> RoleParts { get; }
     IReadOnlyList<ItemTextureInfo> ItemTextures { get; }
+
+    IReadOnlyList<TransformInfo> Transforms { get; }
     IReadOnlyList<SimpleRoleTypeInfo> SimpleRoles { get; }      // ← NEW
     IReadOnlyDictionary<ulong, string> MeshMap { get; }
     IReadOnlyDictionary<ulong, string> TextureMap { get; }
@@ -39,18 +37,16 @@ public interface IGameDataService
 
     C3DSimpleObjInfo? FindSimpleObj(uint typeId);
     C3DEffectInfo? FindEffect(uint id);
-    C3DEffectInfo? FindEffect(string key);
-    ArmorTypeInfo? FindArmor(uint id);
-    ArmetTypeInfo? FindArmet(uint id);
-    WeaponTypeInfo? FindWeapon(uint id);
+    C3DEffectInfo? FindEffect(string key);    
     TransformInfo? FindTransform(int index);
-    ItemTextureInfo? FindItemTexture(uint id);
     SimpleRoleTypeInfo? FindSimpleRole(int index);              // ← NEW
+    ItemTextureInfo? FindItemTexture(uint id);
     uint ResolveItemTexture(uint itemId, ItemColor color);
     uint ResolveItemTexture(uint itemId, byte colorValue);
     IReadOnlyDictionary<int, MagicSkillGroup> MagicSkills { get; }
     MagicSkillGroup? FindMagicSkill(int baseId);
     TmeEntry[] ResolveTme(string tmeKey);
+    RolePart? FindRolePart(uint id, RolePartType type);
 }
 
 public class GameDataService : IGameDataService
@@ -58,12 +54,9 @@ public class GameDataService : IGameDataService
     private List<NpcTypeInfo> _npcs = new();
     private List<C3DSimpleObjInfo> _simpleObjs = new();
     private List<C3DEffectInfo> _effects = new();
-    private List<ArmorTypeInfo> _armors = new();
-    private List<ArmetTypeInfo> _armets = new();
-    private List<WeaponTypeInfo> _weapons = new();
     private List<TransformInfo> _transforms = new();
-    private List<MountTypeInfo> _mounts = new();
     private List<ItemTextureInfo> _itemTextures = new();
+
     private List<SimpleRoleTypeInfo> _simpleRoles = new();      // ← NEW
     private Dictionary<ulong, string> _mesh = new();
     private Dictionary<ulong, string> _tex = new();
@@ -75,12 +68,9 @@ public class GameDataService : IGameDataService
     public IReadOnlyList<NpcTypeInfo> Npcs => _npcs;
     public IReadOnlyList<C3DSimpleObjInfo> SimpleObjs => _simpleObjs;
     public IReadOnlyList<C3DEffectInfo> Effects => _effects;
-    public IReadOnlyList<ArmorTypeInfo> Armors => _armors;
-    public IReadOnlyList<ArmetTypeInfo> Armets => _armets;
-    public IReadOnlyList<WeaponTypeInfo> Weapons => _weapons;
     public IReadOnlyList<TransformInfo> Transforms => _transforms;
-    public IReadOnlyList<MountTypeInfo> Mounts => _mounts;
     public IReadOnlyList<ItemTextureInfo> ItemTextures => _itemTextures;
+
     public IReadOnlyList<SimpleRoleTypeInfo> SimpleRoles => _simpleRoles;   // ← NEW
 
     public IReadOnlyDictionary<ulong, string> MeshMap => _mesh;
@@ -104,6 +94,9 @@ public class GameDataService : IGameDataService
     private static readonly string[] s_tmeDirs =
         ["TerrainMagic", "tme"];
 
+    private List<RolePart> _roleParts = new();
+    public IReadOnlyList<RolePart> RoleParts => _roleParts;
+
     private static Dictionary<ulong, string> Cast(Dictionary<ulong, string> d) => d;
 
     public Task LoadAsync(string conquerPath) => Task.Run(() =>
@@ -114,34 +107,41 @@ public class GameDataService : IGameDataService
 
         string Ini(string f) => Path.Combine(_iniPath, f);
 
+        // Core items
         _npcs = NpcIniParser.Parse(Ini("npc.ini"));
         _simpleObjs = SimpleObjIniParser.Parse(Ini("3DSimpleObj.ini"));
         _effects = EffectIniParser.Parse(Ini("3DEffect.ini"));
-        _armors = ArmorIniParser.Parse(Ini("Armor.ini"));
-        _armets = ArmetIniParser.Parse(Ini("Armet.ini"));
-        _weapons = WeaponIniParser.Parse(Ini("Weapon.ini"));
 
+        // Unified Role Parts Parsing Loop
+        _roleParts.Clear();
+        _roleParts.AddRange(RolePartIniParser.Parse(Ini("Armor.ini"), RolePartType.Armor));
+        _roleParts.AddRange(RolePartIniParser.Parse(Ini("Armet.ini"), RolePartType.Armet));
+        _roleParts.AddRange(RolePartIniParser.Parse(Ini("Weapon.ini"), RolePartType.Weapon));
+        _roleParts.AddRange(RolePartIniParser.Parse(Ini("Mount.ini"), RolePartType.Mount));
+        _roleParts.AddRange(RolePartIniParser.Parse(Ini("Cape.ini"), RolePartType.Cape));
+        _roleParts.AddRange(RolePartIniParser.Parse(Ini("Head.ini"), RolePartType.Head));
+        _roleParts.AddRange(RolePartIniParser.Parse(Ini("Misc.ini"), RolePartType.Misc));
+        _roleParts.AddRange(RolePartIniParser.Parse(Ini("Pelvis.ini"), RolePartType.Pelvis));
+        _roleParts.AddRange(RolePartIniParser.Parse(Ini("Spirit.ini"), RolePartType.Spirit));
+
+        // Transforms and other entries...
         var transformById = new Dictionary<int, TransformInfo>();
-        foreach (var t in AdditiveIniParser.Parse(Ini("AdditiveSize.ini")))
-            transformById[t.Index] = t;
-        foreach (var t in TransFormIniParser.Parse(Ini("TransForm.ini")))
-            transformById[t.Index] = t;
-        _transforms = transformById.Values
-                                  //.OrderBy(t => t.Index)
-                                  .ToList();
-        _mounts = MountIniParser.Parse(Ini("Mount.ini"));
-        _itemTextures = ItemTextureIniParser.Parse(Ini("ItemTexture.ini"));
-        _simpleRoles = SimpleRoleIniParser.Parse(Ini("3DSimpleRole.ini"));  // ← NEW
+        foreach (var t in AdditiveIniParser.Parse(Ini("AdditiveSize.ini"))) transformById[t.Index] = t;
+        foreach (var t in TransFormIniParser.Parse(Ini("TransForm.ini"))) transformById[t.Index] = t;
+        _transforms = transformById.Values.ToList();
 
-        _mesh = Cast(ResIniParser.Parse(Ini("3dobj.ini")));
-        _tex = Cast(ResIniParser.Parse(Ini("3dtexture.ini")));
-        _motion = Cast(ResIniParser.Parse(Ini("3dmotion.ini")));
-        _effectObj = Cast(ResIniParser.Parse(Ini("3DEffectObj.ini")));
-        _weaponMotion = Cast(ResIniParser.Parse(Ini("WeaponMotion.ini")));
-        _mountMotion = Cast(ResIniParser.Parse(Ini("MountMotion.ini")));
-        _loadedPath = conquerPath;
+        _simpleRoles = SimpleRoleIniParser.Parse(Ini("3DSimpleRole.ini"));
+        _itemTextures = ItemTextureIniParser.Parse(Ini("ItemTexture.ini"));
+
+        _mesh = ResIniParser.Parse(Ini("3dobj.ini"));
+        _tex = ResIniParser.Parse(Ini("3dtexture.ini"));
+        _motion = ResIniParser.Parse(Ini("3dmotion.ini"));
+        _effectObj = ResIniParser.Parse(Ini("3DEffectObj.ini"));
+        _weaponMotion = ResIniParser.Parse(Ini("WeaponMotion.ini"));
+        _mountMotion = ResIniParser.Parse(Ini("MountMotion.ini"));
 
         _magicSkills = MagicEffectIniParser.Parse(Ini("MagicEffect.ini"));
+        _loadedPath = conquerPath;
     });
 
     // ── Basic resolvers (go through the public property, not the backing field) ──
@@ -258,24 +258,6 @@ public class GameDataService : IGameDataService
         return null;
     }
 
-    public ArmorTypeInfo? FindArmor(uint id)
-    {
-        foreach (var a in Armors) if (a.Id == id) return a;
-        return null;
-    }
-
-    public ArmetTypeInfo? FindArmet(uint id)
-    {
-        foreach (var a in Armets) if (a.Id == id) return a;
-        return null;
-    }
-
-    public WeaponTypeInfo? FindWeapon(uint id)
-    {
-        foreach (var w in Weapons) if (w.Id == id) return w;
-        return null;
-    }
-
     public TransformInfo? FindTransform(int index)
     {
         foreach (var t in Transforms) if (t.Index == index) return t;
@@ -336,5 +318,14 @@ public class GameDataService : IGameDataService
 
         _tmeCache[cacheKey] = [];
         return [];
+    }
+
+    public RolePart? FindRolePart(uint id, RolePartType type)
+    {
+        foreach (var p in _roleParts)
+        {
+            if (p.Id == id && p.PartType == type) return p;
+        }
+        return null;
     }
 }

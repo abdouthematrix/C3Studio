@@ -311,9 +311,7 @@ public class WorkspaceViewModel : ViewModelBase
             StatusMessage = $"Ready — {_gameData.Npcs.Count} NPCs, {_gameData.SimpleObjs.Count} objects, " +
                 $"{_gameData.SimpleRoles.Count} roles, " +
                 $"{_gameData.Effects.Count} effects, {_gameData.MagicSkills.Count} magic skills, " +
-                $"{_gameData.Armors.Count} armors, " +
-                $"{_gameData.Armets.Count} armets, {_gameData.Weapons.Count} weapons, " +
-                $"{_gameData.Transforms.Count} transforms, {_gameData.Mounts.Count} mounts, " +
+                $"{_gameData.Transforms.Count} transforms." +
                 $"{_gameData.ItemTextures.Count} item textures.";
         }
         catch (Exception ex)
@@ -340,11 +338,8 @@ public class WorkspaceViewModel : ViewModelBase
         AssetTree.Add(BuildSimpleRoleRoot());
         AssetTree.Add(BuildEffectRoot());
         AssetTree.Add(BuildMagicSkillRoot());
-        AssetTree.Add(BuildArmorRoot());
-        AssetTree.Add(BuildArmetRoot());
-        AssetTree.Add(BuildWeaponRoot());
         AssetTree.Add(BuildTransformRoot());
-        AssetTree.Add(BuildMountRoot());
+        AssetTree.Add(BuildRolePartsRoot());
         AssetTree.Add(BuildItemTextureRoot());
         RefreshFilter();
     }
@@ -867,374 +862,7 @@ public class WorkspaceViewModel : ViewModelBase
             && Eq(a.MapEffect, b.MapEffect)
             && Eq(a.WarningEffectOfTarget, b.WarningEffectOfTarget)
             && Eq(a.WarningEffOnTarget, b.WarningEffOnTarget);
-    }
-    // ── Armor tree ────────────────────────────────────────────────────────
-
-    private string GetLookLabel(int look) => look switch
-    {
-        1 => "Small Female",
-        2 => "Big Female",
-        3 => "Small Male",
-        4 => "Big Male",
-        _ => "Other"
-    };
-
-    private AssetNode BuildArmorRoot()
-    {
-        var root = new AssetNode
-        {
-            Icon = "🛡",
-            Label = $"Armors ({_gameData.Armors.Count})"
-        };
-
-        var grouped = _gameData.Armors
-            .GroupBy(a => a.SubType)
-            .OrderBy(g => g.Key);
-
-        foreach (var subtypeGroup in grouped)
-        {
-            var subtypeNode = new AssetNode
-            {
-                Icon = "🔷",
-                Label = $"Subtype {subtypeGroup.Key}"
-            };
-
-            // Separate known looks (1–4) and group all others together
-            var knownLooks = subtypeGroup.Where(a => a.Look >= 1 && a.Look <= 4)
-                                         .GroupBy(a => a.Look)
-                                         .OrderBy(lg => lg.Key);
-
-            foreach (var lookGroup in knownLooks)
-            {
-                var lookNode = new AssetNode
-                {
-                    Icon = "👤",
-                    Label = GetLookLabel(lookGroup.Key)
-                };
-
-                foreach (var armor in lookGroup)
-                    lookNode.Children.Add(BuildArmorNode(armor));
-
-                subtypeNode.Children.Add(lookNode);
-            }
-
-            // Handle "Other" looks
-            var otherLooks = subtypeGroup.Where(a => a.Look < 1 || a.Look > 4);
-            if (otherLooks.Any())
-            {
-                var otherNode = new AssetNode
-                {
-                    Icon = "👤",
-                    Label = "Other"
-                };
-
-                foreach (var armor in otherLooks)
-                    otherNode.Children.Add(BuildArmorNode(armor));
-
-                subtypeNode.Children.Add(otherNode);
-            }
-
-            root.Children.Add(subtypeNode);
-        }
-
-        return root;
-    }
-
-    private AssetNode BuildArmorNode(ArmorTypeInfo armor)
-    {
-        var (meshPaths, texturePaths, asb, adb) = BuildMeshArraysForArmor(armor);
-        var motions = new List<MotionData>();
-        
-        TryAddMotion(motions, "StandBy", (ulong)(armor.Look * 1_000_000) + (int)RoleActionType.StandBy);        
-        // ── Look-based motions ─────────────────────────────────────────
-        // Mirrors C3DRole::SetAction: idBodyMotion = look * 1_000_000 + actionType
-        for (int i = 0; i < 999; i++)
-        {
-            RoleActionType action = (RoleActionType)i;
-            string name = action.ToString();
-            ulong idBodyMotion = (ulong)(armor.Look * 1_000_000 + (int)action);           
-            TryAddMotion(motions, name, idBodyMotion);
-        }
-
-        var node = new AssetNode
-        {
-            Icon = "🛡",
-            Label = $"[{armor.Id}]",
-            AssetData = new AssetData
-            {
-                MeshPaths = meshPaths,
-                TexturePaths = texturePaths,
-                Motions = motions.ToArray(),
-                Asb = asb,
-                Adb = adb,
-            }
-        };
-
-        if (armor.Parts > 1)
-            for (int i = 0; i < armor.Parts; i++)
-            {
-                if (string.IsNullOrEmpty(meshPaths[i]) || meshPaths[i].StartsWith('?'))
-                    continue;
-
-                node.Children.Add(new AssetNode
-                {
-                    Icon = "🔷",
-                    Label = Path.GetFileNameWithoutExtension(meshPaths[i]),
-                    AssetData = new AssetData
-                    {
-                        MeshPaths = [meshPaths[i]],
-                        TexturePaths = [texturePaths[i]],
-                        Motions = motions.ToArray(),
-                        Asb = [asb[i]],
-                        Adb = [adb[i]],
-                    }
-                });
-            }
-
-        return node;
-    }
-
-    // ── Armet tree ────────────────────────────────────────────────────────
-
-    private AssetNode BuildArmetRoot()
-    {
-        var root = new AssetNode
-        {
-            Icon = "⛑",
-            Label = $"Armets ({_gameData.Armets.Count})"
-        };
-
-        var grouped = _gameData.Armets
-            .GroupBy(a => a.SubType)
-            .OrderBy(g => g.Key);
-
-        foreach (var subtypeGroup in grouped)
-        {
-            var subtypeNode = new AssetNode
-            {
-                Icon = "🔷",
-                Label = $"Subtype {subtypeGroup.Key}"
-            };
-
-            // Handle known looks (1–4)
-            var knownLooks = subtypeGroup.Where(a => a.Look >= 1 && a.Look <= 4)
-                                         .GroupBy(a => a.Look)
-                                         .OrderBy(lg => lg.Key);
-
-            foreach (var lookGroup in knownLooks)
-            {
-                var lookNode = new AssetNode
-                {
-                    Icon = "👤",
-                    Label = GetLookLabel(lookGroup.Key)
-                };
-
-                foreach (var armet in lookGroup)
-                    lookNode.Children.Add(BuildArmetNode(armet));
-
-                subtypeNode.Children.Add(lookNode);
-            }
-
-            // Handle "Other" looks
-            var otherLooks = subtypeGroup.Where(a => a.Look < 1 || a.Look > 4);
-            if (otherLooks.Any())
-            {
-                var otherNode = new AssetNode
-                {
-                    Icon = "👤",
-                    Label = "Other"
-                };
-
-                foreach (var armet in otherLooks)
-                    otherNode.Children.Add(BuildArmetNode(armet));
-
-                subtypeNode.Children.Add(otherNode);
-            }
-
-            root.Children.Add(subtypeNode);
-        }
-
-        return root;
-    }
-
-
-    private AssetNode BuildArmetNode(ArmetTypeInfo armet)
-    {
-        var (meshPaths, texturePaths, asb, adb) = BuildMeshArraysForArmet(armet);
-
-        var node = new AssetNode
-        {
-            Icon = "⛑",
-            Label = $"[{armet.Id}]",
-            AssetData = new AssetData
-            {
-                MeshPaths = meshPaths,
-                TexturePaths = texturePaths,
-                Asb = asb,
-                Adb = adb,
-            }
-        };
-
-        if (armet.Parts > 1)
-            for (int i = 0; i < armet.Parts; i++)
-            {
-                if (string.IsNullOrEmpty(meshPaths[i]) || meshPaths[i].StartsWith('?'))
-                    continue;
-
-                node.Children.Add(new AssetNode
-                {
-                    Icon = "🔷",
-                    Label = Path.GetFileNameWithoutExtension(meshPaths[i]),
-                    AssetData = new AssetData
-                    {
-                        MeshPaths = [meshPaths[i]],
-                        TexturePaths = [texturePaths[i]],
-                        Asb = [asb[i]],
-                        Adb = [adb[i]],
-                    }
-                });
-            }
-
-        return node;
-    }
-
-    // ── Weapon tree ───────────────────────────────────────────────────────
-
-    // Define your subtype lookup
-    private static readonly Dictionary<int, string> WeaponSubTypes = new Dictionary<int, string>
-{
-    {000, "Boxing"},
-    {410, "Blade"},
-    {420, "Sword"},
-    {421, "Backsword"},
-    {430, "Hook"},
-    {440, "Whip"},
-    {441, "Mace"},
-    {450, "Axe"},
-    {460, "Hammer"},
-    {470, "Crutch"},
-    {480, "Club"},
-    {481, "Scepter"},
-    {490, "Dagger"},
-    {491, "Prod"},
-    {492, "Fan"},
-    {493, "Flute"},
-    {510, "Glaive"},
-    {511, "Scythe"},
-    {520, "Epee"},
-    {521, "Zither"},
-    {522, "Lute"},
-    {530, "Poleaxe"},
-    {540, "LongHammer"},
-    {550, "Scythe"},
-    {560, "Spear"},
-    {562, "Pickaxe"},
-    {570, "Spade"},
-    {580, "Halbert"},
-    {561, "Wand"},
-    {500, "Bow"},
-    {601, "NinjaSword"},
-    {613, "ThrowingKnife"},
-    {617, "Nunchaku"},
-    {700, "Boxing"},
-    {710, "Blade"},
-    {720, "Sword"},
-    {721, "MagicSword"},
-    {730, "Hook"},
-    {740, "Whip"},
-    {741, "Mace"},
-    {750, "Axe"},
-    {760, "Hammer"},
-    {770, "Crutch"},
-    {780, "Club"},
-    {781, "Scepter"},
-    {790, "Dagger"},
-    {791, "Prod"},
-    {792, "Fan"},
-    {793, "Flute"},
-    {900, "Shield"},
-    {422, "Other"},
-    {610, "PrayerBeads"},
-    {611, "Rapier"},
-    {612, "Pistol"},
-    {614, "CrossSaber"},
-    {616, "Nobunaga`sClaw"},
-    {619, "Hossu"},
-    {620, "PolarBacksword"}
-};
-
-    private AssetNode BuildWeaponRoot()
-    {
-        var root = new AssetNode
-        {
-            Icon = "⚔",
-            Label = $"Weapons ({_gameData.Weapons.Count})"
-        };
-
-        // Group by SubType code
-        var grouped = _gameData.Weapons.GroupBy(w => w.SubType);
-
-        foreach (var group in grouped)
-        {
-            // Lookup subtype name
-            string subtypeName = WeaponSubTypes.TryGetValue(group.Key, out var name)
-                ? name
-                : $"({group.Key})";
-
-            var subtypeNode = new AssetNode
-            {
-                Icon = "🗡",
-                Label = $"{subtypeName} ({group.Count()})"
-            };
-
-            foreach (var weapon in group)
-                subtypeNode.Children.Add(BuildWeaponNode(weapon));
-
-            root.Children.Add(subtypeNode);
-        }
-
-        return root;
-    }
-
-    private AssetNode BuildWeaponNode(WeaponTypeInfo weapon)
-    {
-        var (meshPaths, texturePaths, asb, adb) = BuildMeshArraysForWeapon(weapon);
-
-        var node = new AssetNode
-        {
-            Icon = "⚔",
-            Label = $"[{weapon.Id}]",
-            AssetData = new AssetData
-            {
-                MeshPaths = meshPaths,
-                TexturePaths = texturePaths,
-                Asb = asb,
-                Adb = adb,
-            }
-        };
-
-        if (weapon.Parts > 1)
-            for (int i = 0; i < weapon.Parts; i++)
-            {
-                if (string.IsNullOrEmpty(meshPaths[i]) || meshPaths[i].StartsWith('?'))
-                    continue;
-
-                node.Children.Add(new AssetNode
-                {
-                    Icon = "🔷",
-                    Label = Path.GetFileNameWithoutExtension(meshPaths[i]),
-                    AssetData = new AssetData
-                    {
-                        MeshPaths = [meshPaths[i]],
-                        TexturePaths = [texturePaths[i]],
-                        Asb = [asb[i]],
-                        Adb = [adb[i]],
-                    }
-                });
-            }
-
-        return node;
-    }
+    }   
 
     // ── Transform tree ────────────────────────────────────────────────────
 
@@ -1250,10 +878,10 @@ public class WorkspaceViewModel : ViewModelBase
     {
         AssetData? assetData = null;
 
-        var armor = _gameData.FindArmor((uint)(t.Look * 1_000_000));
+        var armor = _gameData.FindRolePart((uint)(t.Look * 1_000_000), RolePartType.Armor);
         if (armor != null)
         {
-            var (meshPaths, texturePaths, asb, adb) = BuildMeshArraysForArmor(armor);
+            var (meshPaths, texturePaths, asb, adb) = BuildMeshArraysForRolePart(armor);
             if (meshPaths.Length > 0)
                 assetData = new AssetData
                 {
@@ -1270,103 +898,6 @@ public class WorkspaceViewModel : ViewModelBase
             Label = $"[{t.Index}]",
             AssetData = assetData,
         };
-    }
-
-    // ── Mount tree ────────────────────────────────────────────────────────
-
-    private AssetNode BuildMountRoot()
-    {
-        var root = new AssetNode { Icon = "🐴", Label = $"Mounts ({_gameData.Mounts.Count})" };
-
-        // Group by SubType first
-        var groupedBySubtype = _gameData.Mounts
-            .GroupBy(m => m.SubType)
-            .OrderBy(g => g.Key); // optional: sort subtypes
-
-        foreach (var subtypeGroup in groupedBySubtype)
-        {
-            var subtypeNode = new AssetNode
-            {
-                Icon = "📦",
-                Label = $"Subtype {subtypeGroup.Key} ({subtypeGroup.Count()})"
-            };
-
-            // Within each subtype, group by Level
-            var groupedByLevel = subtypeGroup
-                .GroupBy(m => m.Level)
-                .OrderBy(g => g.Key); // optional: sort levels
-
-            foreach (var levelGroup in groupedByLevel)
-            {
-                var levelNode = new AssetNode
-                {
-                    Icon = "🎚️",
-                    Label = $"Level {levelGroup.Key} ({levelGroup.Count()})"
-                };
-
-                foreach (var mount in levelGroup)
-                {
-                    levelNode.Children.Add(BuildMountNode(mount));
-                }
-
-                subtypeNode.Children.Add(levelNode);
-            }
-
-            root.Children.Add(subtypeNode);
-        }
-
-        return root;
-    }
-
-    private AssetNode BuildMountNode(MountTypeInfo mount)
-    {
-        var (meshPaths, texturePaths, asb, adb) = BuildMeshArraysForMount(mount);
-        var motions = new List<MotionData>();        
-        TryAddMountMotion(motions, "StandBy", (ulong)mount.SubType * 10_000, (int)RoleActionType.StandBy);
-        // ── Look-based motions ─────────────────────────────────────────
-        // Mirrors C3DRole::SetAction: idBodyMotion = look * 1_000_000 + actionType
-        for (int i = 0; i < 999; i++)
-        {
-            RoleActionType action = (RoleActionType)i;
-            string name = action.ToString();            
-            TryAddMountMotion(motions, name, (ulong)mount.SubType * 10_000, (int)action);
-        }
-
-        var node = new AssetNode
-        {
-            Icon = "🐴",
-            Label = $"[{mount.Id}]",
-            AssetData = new AssetData
-            {
-                MeshPaths = meshPaths,
-                TexturePaths = texturePaths,  
-                Motions = motions.ToArray(),
-                Asb = asb,
-                Adb = adb,
-            }
-        };
-
-        if (mount.Parts > 1)
-            for (int i = 0; i < mount.Parts; i++)
-            {
-                if (string.IsNullOrEmpty(meshPaths[i]) || meshPaths[i].StartsWith('?'))
-                    continue;
-
-                node.Children.Add(new AssetNode
-                {
-                    Icon = "🔷",
-                    Label = Path.GetFileNameWithoutExtension(meshPaths[i]),
-                    AssetData = new AssetData
-                    {
-                        MeshPaths = [meshPaths[i]],
-                        TexturePaths = [texturePaths[i]],
-                        Asb = [asb[i]],
-                        Adb = [adb[i]],
-                    }
-                });
-            }
-
-        return node;
     }
 
     // ── Item Texture tree ─────────────────────────────────────────────────
@@ -1468,7 +999,6 @@ public class WorkspaceViewModel : ViewModelBase
 
         return parentNode;
     }
-
     // ── SimpleRole  tree  ────────────────────────────────────────────────────
 
     private AssetNode BuildSimpleRoleRoot()
@@ -1604,8 +1134,6 @@ public class WorkspaceViewModel : ViewModelBase
         TM_Fast_Shoot = 800,
         TM_Dispersion_Shoot = 801
     }
-
-
     private AssetNode BuildSimpleRoleNode(SimpleRoleTypeInfo role)
     {
         var motions = new List<MotionData>();
@@ -1634,11 +1162,11 @@ public class WorkspaceViewModel : ViewModelBase
             //   1. RawArmorId       — as stored in the ini, e.g. 3135990
             //   2. EffectiveArmorId — look-rebound: look*1_000_000 + (raw%1_000_000)/10*10
             //   3. look * 1_000_000 — naked body fallback (SetLook default)
-            var armor = _gameData.FindArmor(role.RawArmorId)
-                     ?? _gameData.FindArmor(role.EffectiveArmorId)
-                     ?? (role.RawArmorId != 0 ? _gameData.FindArmor((uint)(role.Look * 1_000_000)) : null);
+            var armor = _gameData.FindRolePart(role.RawArmorId, RolePartType.Armor)
+                     ?? _gameData.FindRolePart(role.EffectiveArmorId, RolePartType.Armor)
+                     ?? (role.RawArmorId != 0 ? _gameData.FindRolePart((uint)(role.Look * 1_000_000), RolePartType.Armor) : null);
             if (armor != null)
-                (bodyMeshes, bodyTextures, bodyAsb, bodyAdb) = BuildMeshArraysForArmor(armor);
+                (bodyMeshes, bodyTextures, bodyAsb, bodyAdb) = BuildMeshArraysForRolePart(armor);
 
             // ── Hair (Armet) ──────────────────────────────────────────────
             // Lookup order (first hit wins):
@@ -1647,10 +1175,10 @@ public class WorkspaceViewModel : ViewModelBase
             //   No fallback — bare head is valid when both lookups fail.
             if (role.RawHairId != 0)
             {
-                var armet = _gameData.FindArmet(role.RawHairId)
-                         ?? _gameData.FindArmet(role.EffectiveHairId);
+                var armet = _gameData.FindRolePart(role.RawHairId, RolePartType.Armet)
+                         ?? _gameData.FindRolePart(role.EffectiveHairId, RolePartType.Armet);
                 if (armet != null)
-                    (hairMeshes, hairTextures, hairAsb, hairAdb) = BuildMeshArraysForArmet(armet);
+                    (hairMeshes, hairTextures, hairAsb, hairAdb) = BuildMeshArraysForRolePart(armet);
             }
 
             TryAddMotion(motions, "StandBy", (ulong)(role.Look * 1_000_000 + (int)RoleActionType.StandBy));
@@ -1718,7 +1246,7 @@ public class WorkspaceViewModel : ViewModelBase
             {
                 var bodyLabel = role.IsSimpleObjRole
                     ? $"{role.SimpleObjId}"
-                    : $"[{role.EffectiveArmorId}] {GetLookLabel(role.Look)}";
+                    : $"[{role.EffectiveArmorId}] {(role.Look)}";
 
                 bodyContainer = new AssetNode
                 {
@@ -1902,6 +1430,270 @@ public class WorkspaceViewModel : ViewModelBase
         return node;
     }
 
+    // ── RolePart tree ────────────────────────────────────────────────────
+
+    private AssetNode BuildRolePartsRoot()
+    {
+        var root = new AssetNode
+        {
+            Icon = "🎒",
+            Label = $"Role Parts ({_gameData.RoleParts.Count})"
+        };
+
+        // Group by Part Type (Armor, Weapon, Mount, etc.)
+        var groupedByType = _gameData.RoleParts
+            .GroupBy(p => p.PartType)
+            .OrderBy(g => g.Key);
+
+        foreach (var typeGroup in groupedByType)
+        {
+            var typeNode = new AssetNode
+            {
+                Icon = GetIconForPartType(typeGroup.Key),
+                Label = $"{typeGroup.Key}s ({typeGroup.Count()})"
+            };
+
+            // Sub-group by SubType
+            var groupedBySubType = typeGroup.GroupBy(p => p.SubType).OrderBy(g => g.Key);
+
+            foreach (var subGroup in groupedBySubType)
+            {
+                string subTypeLabel = GetSubTypeLabel(typeGroup.Key, subGroup.Key);
+                var subTypeNode = new AssetNode { Icon = "🔷", Label = subTypeLabel };
+
+                // Apply type-specific grouping (Look for Armors/Armets, Level for Mounts)
+                if (typeGroup.Key == RolePartType.Armor || typeGroup.Key == RolePartType.Armet)
+                {
+                    // Your cleaner grouping approach
+                    var knownLooks = subGroup.Where(a =>
+                      (a.Look >= 1 && a.Look <= 4) ||
+                      (a.Look == 7 || a.Look == 8))
+                          .GroupBy(a => a.Look)
+                          .OrderBy(lg => lg.Key);
+
+                    var otherLooks = subGroup.Where(a =>
+                                         (a.Look < 1 || a.Look > 4) &&
+                                         (a.Look != 7 && a.Look != 8));
+
+
+                    // 1. Process the standard looks (1-4)
+                    foreach (var lookGroup in knownLooks)
+                    {
+                        var lookNode = new AssetNode { Icon = "👤", Label = GetLookLabel(lookGroup.Key) };
+
+                        foreach (var part in lookGroup)
+                            lookNode.Children.Add(BuildRolePartNode(part));
+
+                        subTypeNode.Children.Add(lookNode);
+                    }
+
+                    // 2. Process the "Other" bucket
+                    if (otherLooks.Any())
+                    {
+                        var otherNode = new AssetNode { Icon = "👤", Label = "Other" };
+
+                        foreach (var part in otherLooks)
+                            otherNode.Children.Add(BuildRolePartNode(part));
+
+                        subTypeNode.Children.Add(otherNode);
+                    }
+                }
+                else if (typeGroup.Key == RolePartType.Mount)
+                {
+                    var levels = subGroup.GroupBy(p => p.Level).OrderBy(g => g.Key);
+                    foreach (var levelGroup in levels)
+                    {
+                        var levelNode = new AssetNode { Icon = "🎚️", Label = $"Level {levelGroup.Key} ({levelGroup.Count()})" };
+                        foreach (var part in levelGroup)
+                            levelNode.Children.Add(BuildRolePartNode(part));
+
+                        subTypeNode.Children.Add(levelNode);
+                    }
+                }
+                else
+                {
+                    // Default: Flat list for Weapons, Capes, etc.
+                    foreach (var part in subGroup)
+                        subTypeNode.Children.Add(BuildRolePartNode(part));
+                }
+
+                typeNode.Children.Add(subTypeNode);
+            }
+
+            root.Children.Add(typeNode);
+        }
+
+        return root;
+    }
+    private AssetNode BuildRolePartNode(RolePart part)
+    {
+        var (meshPaths, texturePaths, asb, adb) = BuildMeshArraysForRolePart(part);
+        var motions = new List<MotionData>();
+
+        // Reattach motions based on part type
+        if (part.PartType == RolePartType.Armor)
+        {
+            TryAddMotion(motions, "StandBy", (ulong)(part.Look * 1_000_000) + (int)RoleActionType.StandBy);
+            for (int i = 0; i < 999; i++)
+            {
+                RoleActionType action = (RoleActionType)i;
+                TryAddMotion(motions, action.ToString(), (ulong)(part.Look * 1_000_000 + (int)action));
+            }
+        }
+        else if (part.PartType == RolePartType.Mount)
+        {
+            TryAddMountMotion(motions, "StandBy", (ulong)part.SubType * 10_000, (int)RoleActionType.StandBy);
+            for (int i = 0; i < 999; i++)
+            {
+                RoleActionType action = (RoleActionType)i;
+                TryAddMountMotion(motions, action.ToString(), (ulong)part.SubType * 10_000, (int)action);
+            }
+        }
+
+        var node = new AssetNode
+        {
+            Icon = GetIconForPartType(part.PartType),
+            Label = $"[{part.Id}]",
+            AssetData = new AssetData
+            {
+                MeshPaths = meshPaths,
+                TexturePaths = texturePaths,
+                Motions = motions.ToArray(),
+                Asb = asb,
+                Adb = adb,
+            }
+        };
+
+        // Attach sub-parts if the item is multi-part
+        if (part.Parts > 1)
+        {
+            for (int i = 0; i < part.Parts; i++)
+            {
+                if (string.IsNullOrEmpty(meshPaths[i]) || meshPaths[i].StartsWith('?'))
+                    continue;
+
+                node.Children.Add(new AssetNode
+                {
+                    Icon = "▫",
+                    Label = Path.GetFileNameWithoutExtension(meshPaths[i]),
+                    AssetData = new AssetData
+                    {
+                        MeshPaths = [meshPaths[i]],
+                        TexturePaths = [texturePaths[i]],
+                        Motions = motions.ToArray(),
+                        Asb = [asb[i]],
+                        Adb = [adb[i]],
+                    }
+                });
+            }
+        }
+
+        return node;
+    }
+    private static string GetIconForPartType(RolePartType type) => type switch
+    {
+        RolePartType.Armor => "🛡",
+        RolePartType.Armet => "⛑",
+        RolePartType.Weapon => "⚔",
+        RolePartType.Mount => "🐴",
+        RolePartType.Cape => "🧣",
+        RolePartType.Head => "👤",
+        _ => "📦"
+    };
+
+    private static string GetSubTypeLabel(RolePartType type, int subType)
+    {
+        if (type == RolePartType.Weapon)
+        {
+            return WeaponSubTypes.TryGetValue(subType, out var name)
+                ? $"{name} ({subType})"
+                : $"Subtype {subType}";
+        }
+
+        return $"Subtype {subType}";
+    }
+    private string GetLookLabel(int look) => look switch
+    {
+        1 => "Small Female",
+        2 => "Big Female",
+        3 => "Small Male",
+        4 => "Big Male",
+        7 => "Female",
+        8 => "Male",
+        _ => "Other"
+    };
+    // Define your subtype lookup
+    private static readonly Dictionary<int, string> WeaponSubTypes = new Dictionary<int, string>
+{
+    {000, "Boxing"},
+    {410, "Blade"},
+    {420, "Sword"},
+    {421, "Backsword"},
+    {422, "Other"},
+    {430, "Hook"},
+    {440, "Whip"},
+    {441, "Mace"},
+    {450, "Axe"},
+    {460, "Hammer"},
+    {470, "Crutch"},
+    {480, "Club"},
+    {481, "Scepter"},
+    {490, "Dagger"},
+    {491, "Prod"},
+    {492, "Fan"},
+    {493, "Flute"},
+    {500, "Bow"},
+    {510, "Glaive"},
+    {511, "Scythe"},
+    {520, "Epee"},
+    {521, "Zither"},
+    {522, "Lute"},
+    {530, "Poleaxe"},
+    {540, "LongHammer"},
+    {550, "Scythe"}, // duplicate preserved
+    {560, "Spear"},
+    {561, "Wand"},
+    {562, "Pickaxe"},
+    {570, "Spade"},
+    {580, "Halbert"},
+    {601, "NinjaSword"},
+    {606, "Crossbow"},
+    {608, "Alabarda Extrania"},
+    {610, "PrayerBeads"},
+    {611, "Rapier"},
+    {612, "Pistol"},
+    {613, "ThrowingKnife"},
+    {614, "CrossSaber"},
+    {616, "Nobunaga`sClaw"},
+    {617, "Nunchaku"},
+    {619, "Hossu"},
+    {620, "PolarBacksword"},
+    {622, "DivinePillar"},
+    {624, "Fist"},
+    {626, "WindwalkerFan"},
+    {670, "HandGun"},
+    {671, "MightyRapier"},
+    {680, "Flashaxe"},
+    {681, "Stormhammer"},
+    {700, "Boxing"},
+    {710, "Blade"},
+    {720, "Sword"},
+    {721, "MagicSword"},
+    {730, "Hook"},
+    {740, "Whip"},
+    {741, "Mace"},
+    {750, "Axe"},
+    {760, "Hammer"},
+    {770, "Crutch"},
+    {780, "Club"},
+    {781, "Scepter"},
+    {790, "Dagger"},
+    {791, "Prod"},
+    {792, "Fan"},
+    {793, "Flute"},
+    {900, "Shield"}
+};
+
     /// <summary>
     /// Tries to find the mesh(es) for <paramref name="itemId"/> by probing
     /// Armor → Armet → Weapon in order.
@@ -1910,7 +1702,7 @@ public class WorkspaceViewModel : ViewModelBase
     private (string[] Meshes, int[] Asb, int[] Adb) TryFindItemMesh(uint itemId)
     {
 
-        var armor = _gameData.FindArmor(itemId);
+        var armor = _gameData.FindRolePart(itemId, RolePartType.Armor);
         if (armor != null)
         {
             var meshes = new string[armor.Parts];
@@ -1925,7 +1717,7 @@ public class WorkspaceViewModel : ViewModelBase
             return (meshes, asb, adb);
         }
 
-        var armet = _gameData.FindArmet(itemId);
+        var armet = _gameData.FindRolePart(itemId, RolePartType.Armet);
         if (armet != null)
         {
             var meshes = new string[armet.Parts];
@@ -1940,7 +1732,7 @@ public class WorkspaceViewModel : ViewModelBase
             return (meshes, asb, adb);
         }
 
-        var weapon = _gameData.FindWeapon(itemId);
+        var weapon = _gameData.FindRolePart(itemId, RolePartType.Weapon);
         if (weapon != null)
         {
             var meshes = new string[weapon.Parts];
@@ -1967,19 +1759,6 @@ public class WorkspaceViewModel : ViewModelBase
         return ([], [], []);
     }
 
-    private static string ColorIcon(ItemColor color) => color switch
-    {
-        ItemColor.Black => "⬛",
-        ItemColor.Orange => "🟠",
-        ItemColor.LightBlue => "🩵",
-        ItemColor.Red => "🔴",
-        ItemColor.Blue => "🔵",
-        ItemColor.Yellow => "🟡",
-        ItemColor.Purple => "🟣",
-        ItemColor.White => "⬜",
-        _ => "🎨",
-    };
-
     // ── Mesh-array helpers ────────────────────────────────────────────────
     // All helpers return (Paths, Textures, Asb, Adb) so blend state flows
     // from every type's ini data through AssetData into the renderer.
@@ -2001,72 +1780,21 @@ public class WorkspaceViewModel : ViewModelBase
         }
         return (meshes, textures, asb, adb);
     }
-
-    private (string[] Paths, string[] Textures, int[] Asb, int[] Adb) BuildMeshArraysForArmor(
-        ArmorTypeInfo armor)
+    private (string[] Paths, string[] Textures, int[] Asb, int[] Adb) BuildMeshArraysForRolePart(RolePart part)
     {
-        var meshes = new string[armor.Parts];
-        var textures = new string[armor.Parts];
-        var asb = new int[armor.Parts];
-        var adb = new int[armor.Parts];
-        for (int i = 0; i < armor.Parts; i++)
-        {
-            meshes[i] = _gameData.ResolveMesh(armor.MeshIds[i]) ?? $"? ({armor.MeshIds[i]})";
-            textures[i] = _gameData.ResolveTexture(armor.TextureIds[i]) ?? $"? ({armor.TextureIds[i]})";
-            asb[i] = armor.Asb[i];
-            adb[i] = armor.Adb[i];
-        }
-        return (meshes, textures, asb, adb);
-    }
+        var meshes = new string[part.Parts];
+        var textures = new string[part.Parts];
+        var asb = new int[part.Parts];
+        var adb = new int[part.Parts];
 
-    private (string[] Paths, string[] Textures, int[] Asb, int[] Adb) BuildMeshArraysForArmet(
-        ArmetTypeInfo armet)
-    {
-        var meshes = new string[armet.Parts];
-        var textures = new string[armet.Parts];
-        var asb = new int[armet.Parts];
-        var adb = new int[armet.Parts];
-        for (int i = 0; i < armet.Parts; i++)
+        for (int i = 0; i < part.Parts; i++)
         {
-            meshes[i] = _gameData.ResolveMesh(armet.MeshIds[i]) ?? $"? ({armet.MeshIds[i]})";
-            textures[i] = _gameData.ResolveTexture(armet.TextureIds[i]) ?? $"? ({armet.TextureIds[i]})";
-            asb[i] = armet.Asb[i];
-            adb[i] = armet.Adb[i];
+            meshes[i] = _gameData.ResolveMesh(part.MeshIds[i]) ?? $"? ({part.MeshIds[i]})";
+            textures[i] = _gameData.ResolveTexture(part.TextureIds[i]) ?? $"? ({part.TextureIds[i]})";
+            asb[i] = part.Asb[i];
+            adb[i] = part.Adb[i];
         }
-        return (meshes, textures, asb, adb);
-    }
 
-    private (string[] Paths, string[] Textures, int[] Asb, int[] Adb) BuildMeshArraysForWeapon(
-        WeaponTypeInfo weapon)
-    {
-        var meshes = new string[weapon.Parts];
-        var textures = new string[weapon.Parts];
-        var asb = new int[weapon.Parts];
-        var adb = new int[weapon.Parts];
-        for (int i = 0; i < weapon.Parts; i++)
-        {
-            meshes[i] = _gameData.ResolveMesh(weapon.MeshIds[i]) ?? $"? ({weapon.MeshIds[i]})";
-            textures[i] = _gameData.ResolveTexture(weapon.TextureIds[i]) ?? $"? ({weapon.TextureIds[i]})";
-            asb[i] = weapon.Asb[i];
-            adb[i] = weapon.Adb[i];
-        }
-        return (meshes, textures, asb, adb);
-    }
-
-    private (string[] Paths, string[] Textures, int[] Asb, int[] Adb) BuildMeshArraysForMount(
-        MountTypeInfo mount)
-    {
-        var meshes = new string[mount.Parts];
-        var textures = new string[mount.Parts];
-        var asb = new int[mount.Parts];
-        var adb = new int[mount.Parts];
-        for (int i = 0; i < mount.Parts; i++)
-        {
-            meshes[i] = _gameData.ResolveMesh(mount.MeshIds[i]) ?? $"? ({mount.MeshIds[i]})";
-            textures[i] = _gameData.ResolveTexture(mount.TextureIds[i]) ?? $"? ({mount.TextureIds[i]})";
-            asb[i] = mount.Asb[i];
-            adb[i] = mount.Adb[i];
-        }
         return (meshes, textures, asb, adb);
     }
 
