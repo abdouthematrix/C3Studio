@@ -17,12 +17,17 @@ public static class EffectIniParser
 {
     public static List<C3DEffectInfo> Parse(string filePath)
     {
+        if (!File.Exists(filePath)) return new();
+        using var reader = new StreamReader(filePath);
+        return Parse(reader);
+    }
+    public static List<C3DEffectInfo> Parse(TextReader reader)
+    {
         var result = new List<C3DEffectInfo>();
-        if (!File.Exists(filePath)) return result;
-
         C3DEffectInfo? current = null;
 
-        foreach (var rawLine in File.ReadLines(filePath))
+        string? rawLine;
+        while ((rawLine = reader.ReadLine()) is not null)
         {
             var line = rawLine.Trim();
             if (string.IsNullOrEmpty(line) || line.StartsWith("//"))

@@ -14,13 +14,19 @@ public static class RolePartIniParser
 {
     public static List<RolePart> Parse(string filePath, RolePartType partType)
     {
+        if (!File.Exists(filePath)) return new();
+        using var reader = new StreamReader(filePath);
+        return Parse(reader, partType);
+    }
+    public static List<RolePart> Parse(TextReader reader, RolePartType partType)
+    {
         var result = new List<RolePart>();
-        if (!File.Exists(filePath)) return result;
 
         string prefix = partType.ToString();
         RolePart? current = null;
 
-        foreach (var rawLine in File.ReadLines(filePath))
+        string? rawLine;
+        while ((rawLine = reader.ReadLine()) is not null)
         {
             var line = rawLine.Trim();
             if (string.IsNullOrEmpty(line) || line.StartsWith("//"))

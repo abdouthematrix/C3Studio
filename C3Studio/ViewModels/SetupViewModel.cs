@@ -4,19 +4,18 @@ using System.Windows.Input;
 using C3Studio.Core.Models;
 using C3Studio.Core.Services;
 
-
 namespace C3Studio.ViewModels;
 
 public class SetupViewModel : ViewModelBase
 {
-    private readonly ISettingsService  _settings;
-    private readonly IGameDataService  _gameData;
+    private readonly ISettingsService _settings;
+    private readonly IGameDataService _gameData;
     private readonly IAssetFileService _assets;
 
-    private string _conquerPath  = string.Empty;
-    private string _statusText   = "Select your Conquer Online game folder.";
-    private bool   _isValid;
-    private bool   _isLoading;
+    private string _conquerPath = string.Empty;
+    private string _statusText = "Select your Conquer Online game folder.";
+    private bool _isValid;
+    private bool _isLoading;
 
     public event Action? NavigateToWorkspace;
 
@@ -24,13 +23,19 @@ public class SetupViewModel : ViewModelBase
     private static readonly string[] RequiredFolders = ["ani", "c3", "data", "ini"];
     private static readonly string[] RequiredPackages = ["c3", "data"];
     private static readonly string[] PackagesExtensions = { ".wdf", ".tpd", ".tpi", ".dnp" };
-    private static readonly string[] RequiredIni     =
+
+    // INI files that must strictly exist on disk inside the 'ini' directory
+    private static readonly string[] RequiredPlainIni =
     [
-        "npc.ini", "3DSimpleObj.ini", "3DEffect.ini",
-        "3dobj.ini", "3dtexture.ini", "3dmotion.ini", "3DEffectObj.ini",
-        "3DsimpleRole.ini", "MountMotion.ini", "WeaponMotion.ini",
-        "armor.ini", "armet.ini", "weapon.ini", "Mount.ini",
-        "AdditiveSize.ini","TransForm.ini",
+        "npc.ini", "3DsimpleRole.ini", "AdditiveSize.ini", "TransForm.ini"
+    ];
+
+    // Files that are preferentially loaded as a .dbc table inside c3.wdb, with a local .ini fallback
+    private static readonly string[] RequiredDbcOrIni =
+    [
+        "3DSimpleObj.ini", "3DEffect.ini", "3dobj.ini", "3dtexture.ini",
+        "3dmotion.ini", "3DEffectObj.ini", "MountMotion.ini", "WeaponMotion.ini",
+        "armor.ini", "armet.ini", "weapon.ini", "Mount.ini"
     ];
 
     public string ConquerPath
@@ -39,23 +44,23 @@ public class SetupViewModel : ViewModelBase
         set { if (Set(ref _conquerPath, value)) Validate(); }
     }
 
-    public string StatusText  { get => _statusText;  private set => Set(ref _statusText,  value); }
-    public bool   IsValid     { get => _isValid;      private set => Set(ref _isValid,     value); }
-    public bool   IsLoading   { get => _isLoading;    private set => Set(ref _isLoading,   value); }
+    public string StatusText { get => _statusText; private set => Set(ref _statusText, value); }
+    public bool IsValid { get => _isValid; private set => Set(ref _isValid, value); }
+    public bool IsLoading { get => _isLoading; private set => Set(ref _isLoading, value); }
 
     public ObservableCollection<ValidationItem> ValidationItems { get; } = new();
 
     public ICommand BrowseCommand { get; }
-    public ICommand LoadCommand   { get; }
+    public ICommand LoadCommand { get; }
 
     public SetupViewModel(ISettingsService settings, IGameDataService gameData, IAssetFileService assets)
     {
         _settings = settings;
-        _gameData  = gameData;
-        _assets    = assets;
+        _gameData = gameData;
+        _assets = assets;
 
         BrowseCommand = Cmd(Browse);
-        LoadCommand   = Cmd(async () => await LoadAsync(), () => IsValid && !IsLoading);
+        LoadCommand = Cmd(async () => await LoadAsync(), () => IsValid && !IsLoading);
 
         ConquerPath = settings.ConquerPath;
     }
@@ -65,9 +70,9 @@ public class SetupViewModel : ViewModelBase
     {
         var dlg = new System.Windows.Forms.FolderBrowserDialog
         {
-            Description            = "Select Conquer Online game folder",
+            Description = "Select Conquer Online game folder",
             UseDescriptionForTitle = true,
-            ShowNewFolderButton    = false,
+            ShowNewFolderButton = false,
         };
         if (!string.IsNullOrEmpty(ConquerPath))
             dlg.SelectedPath = ConquerPath;
@@ -82,7 +87,7 @@ public class SetupViewModel : ViewModelBase
 
         if (string.IsNullOrWhiteSpace(ConquerPath) || !Directory.Exists(ConquerPath))
         {
-            IsValid    = false;
+            IsValid = false;
             StatusText = "Folder does not exist.";
             return;
         }
@@ -105,11 +110,29 @@ public class SetupViewModel : ViewModelBase
             );
         }
 
-        foreach (var i in RequiredIni)
+        // 1. Validate files that must strictly be plain INIs on disk
+        foreach (var i in RequiredPlainIni)
+        {
             AddItem("INI", i, File.Exists(Path.Combine(ConquerPath, "ini", i)));
+        }
+
+        // 2. Validate flexible files (Prioritizing the .dbc archive version)
+        bool wdbExists = File.Exists(Path.Combine(ConquerPath, "ini", "c3.wdb"));
+        foreach (var i in RequiredDbcOrIni)
+        {
+            bool hasPlainIni = File.Exists(Path.Combine(ConquerPath, "ini", i));
+            bool exists = wdbExists || hasPlainIni;
+
+            // Since the loader grabs the DBC from c3.wdb first, reflect that priority in the display name
+            string displayName = wdbExists
+                ? $"{Path.GetFileNameWithoutExtension(i)}.dbc (Archive)"
+                : i;
+
+            AddItem("DBC/INI", displayName, exists);
+        }
 
         bool ok = ValidationItems.All(v => v.Status == ValidationStatus.Ok);
-        IsValid    = ok;
+        IsValid = ok;
         StatusText = ok ? "✓  All checks passed — ready to load."
                         : $"{ValidationItems.Count(v => v.Status == ValidationStatus.Fail)} item(s) missing.";
     }
@@ -118,14 +141,14 @@ public class SetupViewModel : ViewModelBase
         => ValidationItems.Add(new ValidationItem
         {
             Category = category,
-            Name     = name,
-            Status   = exists ? ValidationStatus.Ok : ValidationStatus.Fail,
+            Name = name,
+            Status = exists ? ValidationStatus.Ok : ValidationStatus.Fail,
         });
 
     // ── Load ──────────────────────────────────────────────────────────────
     private async Task LoadAsync()
     {
-        IsLoading  = true;
+        IsLoading = true;
         StatusText = "Loading game data…";
         try
         {
@@ -137,7 +160,7 @@ public class SetupViewModel : ViewModelBase
         catch (Exception ex)
         {
             StatusText = $"Load failed: {ex.Message}";
-            IsValid    = false;
+            IsValid = false;
         }
         finally { IsLoading = false; }
     }

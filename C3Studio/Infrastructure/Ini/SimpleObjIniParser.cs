@@ -1,5 +1,6 @@
-using System.IO;
 using C3Studio.Core.Models;
+using SharpDX.Mathematics.Interop;
+using System.IO;
 
 namespace C3Studio.Infrastructure.Ini;
 
@@ -10,13 +11,18 @@ public static class SimpleObjIniParser
 {
     public static List<C3DSimpleObjInfo> Parse(string filePath)
     {
+        if (!File.Exists(filePath)) return new();
+        using var reader = new StreamReader(filePath);
+        return Parse(reader);
+    }
+    public static List<C3DSimpleObjInfo> Parse(TextReader reader)
+    {
         var result = new List<C3DSimpleObjInfo>();
-        if (!File.Exists(filePath)) return result;
-
         C3DSimpleObjInfo? current = null;
         int nextPartIdx = 0;
 
-        foreach (var rawLine in File.ReadLines(filePath))
+        string? rawLine;
+        while ((rawLine = reader.ReadLine()) is not null)
         {
             var line = rawLine.Trim();
 
