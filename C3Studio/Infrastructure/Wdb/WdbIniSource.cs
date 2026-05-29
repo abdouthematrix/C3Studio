@@ -45,15 +45,15 @@ internal static class WdbEntryMap
             ["3dsimpleobj"]   = DbcFormat.SIMO,
 
             // ── MESZ (extended role parts) ─────────────────────────────────
-            ["armor"]         = DbcFormat.MESZ,
-            ["armet"]         = DbcFormat.MESZ,
-            ["weapon"]        = DbcFormat.MESZ,
-            ["mount"]         = DbcFormat.MESZ,
-            ["cape"]          = DbcFormat.MESZ,
-            ["head"]          = DbcFormat.MESZ,
-            ["misc"]          = DbcFormat.MESZ,
-            ["pelvis"]        = DbcFormat.MESZ,
-            ["spirit"]        = DbcFormat.MESZ,
+            //["armor"]         = DbcFormat.MESZ,
+            //["armet"]         = DbcFormat.MESZ,
+            //["weapon"]        = DbcFormat.MESZ,
+            //["mount"]         = DbcFormat.MESZ,
+            //["cape"]          = DbcFormat.MESZ,
+            //["head"]          = DbcFormat.MESZ,
+            //["misc"]          = DbcFormat.MESZ,
+            //["pelvis"]        = DbcFormat.MESZ,
+            //["spirit"]        = DbcFormat.MESZ,
         };
 
     /// <summary>
