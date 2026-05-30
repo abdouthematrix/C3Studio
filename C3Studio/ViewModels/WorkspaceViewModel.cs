@@ -30,15 +30,15 @@ public class WorkspaceViewModel : ViewModelBase
     private string _frameLabel = "0 / 0";
     private string _playPauseLabel = "⏸";
     private float _fps = 30f;
-    public ObservableCollection<MeshSlotViewModel> MeshSlots { get; } = new();    
+    public ObservableCollection<MeshSlotViewModel> MeshSlots { get; } = new();
     private bool _meshSlotsAreAllVisible;
     public bool MeshSlotsAreAllVisible
     {
         get => MeshSlots.All(s => s.IsVisible);
         set
         {
-            foreach (var slot in MeshSlots)            
-                slot.IsVisible = value;            
+            foreach (var slot in MeshSlots)
+                slot.IsVisible = value;
             Set(ref _meshSlotsAreAllVisible, value);
         }
     }
@@ -893,7 +893,7 @@ public class WorkspaceViewModel : ViewModelBase
             && Eq(a.MapEffect, b.MapEffect)
             && Eq(a.WarningEffectOfTarget, b.WarningEffectOfTarget)
             && Eq(a.WarningEffOnTarget, b.WarningEffOnTarget);
-    }   
+    }
 
     // ── Transform tree ────────────────────────────────────────────────────
 
@@ -1493,7 +1493,7 @@ public class WorkspaceViewModel : ViewModelBase
                 var subTypeNode = new AssetNode { Icon = "🔷", Label = subTypeLabel };
 
                 // Apply type-specific grouping (Look for Armors/Armets, Level for Mounts)
-                if (typeGroup.Key == RolePartType.Armor || typeGroup.Key == RolePartType.Armet)
+                if (typeGroup.Key == RolePartType.Armor || typeGroup.Key == RolePartType.Armet || typeGroup.Key == RolePartType.Misc || typeGroup.Key == RolePartType.Pelvis || typeGroup.Key == RolePartType.Head || typeGroup.Key == RolePartType.Cape)
                 {
                     // Your cleaner grouping approach
                     var knownLooks = subGroup.Where(a =>
@@ -1564,6 +1564,8 @@ public class WorkspaceViewModel : ViewModelBase
         // Reattach motions based on part type
         if (part.PartType == RolePartType.Armor)
         {
+            // Armor (and by extension Armet/Cape/Head/Misc/Pelvis/Spirit that share 3dmotion.ini)
+            // use the look-based key: look * 1_000_000 + actionType
             TryAddMotion(motions, "StandBy", (ulong)(part.Look * 1_000_000) + (int)RoleActionType.StandBy);
             for (int i = 0; i < 999; i++)
             {
@@ -1571,13 +1573,77 @@ public class WorkspaceViewModel : ViewModelBase
                 TryAddMotion(motions, action.ToString(), (ulong)(part.Look * 1_000_000 + (int)action));
             }
         }
+        else if (part.PartType == RolePartType.Armet)
+        {
+            // armetmotion.ini — key: partId * 1000 + actionType
+            for (int i = 0; i < 999; i++)
+            {
+                RoleActionType action = (RoleActionType)i;
+                TryAddArmetMotion(motions, action.ToString(), part.Id, i);
+            }
+        }
+        else if (part.PartType == RolePartType.Cape)
+        {
+            // capemotion.ini — key: partId * 1000 + actionType
+            for (int i = 0; i < 999; i++)
+            {
+                RoleActionType action = (RoleActionType)i;
+                TryAddCapeMotion(motions, action.ToString(), part.Id, i);
+            }
+        }
+        else if (part.PartType == RolePartType.Head)
+        {
+            // headmotion.ini — key: partId * 1000 + actionType
+            for (int i = 0; i < 999; i++)
+            {
+                RoleActionType action = (RoleActionType)i;
+                TryAddHeadMotion(motions, action.ToString(), part.Id, i);
+            }
+        }            
+        else if (part.PartType == RolePartType.Weapon)
+        {
+            // WeaponMotion.ini — uses ResolveWeaponMotion (category + wildcard fallback)
+            for (int i = 0; i < 999; i++)
+            {
+                RoleActionType action = (RoleActionType)i;
+                TryAddWeaponMotion(motions, action.ToString(), part.Id, i);
+            }
+        }
+        else if (part.PartType == RolePartType.Misc)
+        {
+            // miscmotion.ini — key: partId * 1000 + actionType
+            for (int i = 0; i < 999; i++)
+            {
+                RoleActionType action = (RoleActionType)i;
+                TryAddMiscMotion(motions, action.ToString(), part.Id, i);
+            }
+        }
         else if (part.PartType == RolePartType.Mount)
         {
+            // MountMotion.ini — uses ResolveMountMotion (category + wildcard fallback)
             TryAddMountMotion(motions, "StandBy", (ulong)part.SubType * 10_000, (int)RoleActionType.StandBy);
             for (int i = 0; i < 999; i++)
             {
                 RoleActionType action = (RoleActionType)i;
-                TryAddMountMotion(motions, action.ToString(), (ulong)part.SubType * 10_000, (int)action);
+                TryAddMountMotion(motions, action.ToString(), (ulong)part.SubType * 10_000, i);
+            }
+        }
+        else if (part.PartType == RolePartType.Pelvis)
+        {
+            // pelvismotion.ini — key: partId * 1000 + actionType
+            for (int i = 0; i < 999; i++)
+            {
+                RoleActionType action = (RoleActionType)i;
+                TryAddPelvisMotion(motions, action.ToString(), part.Id, i);
+            }
+        }       
+        else if (part.PartType == RolePartType.Spirit)
+        {
+            for (int i = 0; i < 999; i++)
+            {
+                RoleActionType action = (RoleActionType)i;
+                TryAddSpiritMotion(motions, action.ToString(), part.Id, i);
+                TryAddSpiritMotion(motions, "[1]" + action.ToString(), (ulong)(100_000_000 + part.Id), i);
             }
         }
 
@@ -1820,8 +1886,14 @@ public class WorkspaceViewModel : ViewModelBase
 
         for (int i = 0; i < part.Parts; i++)
         {
-            meshes[i] = _gameData.ResolveMesh(part.MeshIds[i]) ?? $"? ({part.MeshIds[i]})";
-            textures[i] = _gameData.ResolveTexture(part.TextureIds[i]) ?? $"? ({part.TextureIds[i]})";
+            meshes[i] = (part.PartType == RolePartType.Armet
+                ? _gameData.ResolveMesh(part.MeshIds[i]) ?? _gameData.ResolveMesh(1990000000 + part.MeshIds[i])
+                : _gameData.ResolveMesh(part.MeshIds[i]))
+                ?? $"? ({part.MeshIds[i]})";
+
+            textures[i] = (part.PartType == RolePartType.Armet
+                ? _gameData.ResolveTexture(part.TextureIds[i]) ?? _gameData.ResolveTexture(1990000000 + part.TextureIds[i])
+                : _gameData.ResolveTexture(part.TextureIds[i])) ?? $"? ({part.TextureIds[i]})";
             asb[i] = part.Asb[i];
             adb[i] = part.Adb[i];
         }
@@ -1909,6 +1981,62 @@ public class WorkspaceViewModel : ViewModelBase
     {
         if (id == 0) return;
         var path = _gameData.ResolveMountMotion(id, action);
+        if (path != null)
+            entries.Add(new MotionData(label, path));
+    }
+
+    private void TryAddWeaponMotion(List<MotionData> entries, string label, ulong id, int action)
+    {
+        if (id == 0) return;
+        var path = _gameData.ResolveWeaponMotion(id, action);
+        if (path != null)
+            entries.Add(new MotionData(label, path));
+    }
+
+    private void TryAddCapeMotion(List<MotionData> entries, string label, ulong id, int action)
+    {
+        if (id == 0) return;
+        var path = _gameData.ResolveCapeMotion(id, action);
+        if (path != null)
+            entries.Add(new MotionData(label, path));
+    }
+
+    private void TryAddMiscMotion(List<MotionData> entries, string label, ulong id, int action)
+    {
+        if (id == 0) return;
+        var path = _gameData.ResolveMiscMotion(id, action);
+        if (path != null)
+            entries.Add(new MotionData(label, path));
+    }
+
+    private void TryAddArmetMotion(List<MotionData> entries, string label, ulong id, int action)
+    {
+        if (id == 0) return;
+        var path = _gameData.ResolveArmetMotion(id, action);
+        if (path != null)
+            entries.Add(new MotionData(label, path));
+    }
+
+    private void TryAddSpiritMotion(List<MotionData> entries, string label, ulong id, int action)
+    {
+        if (id == 0) return;
+        var path = _gameData.ResolveSpiritMotion(id, action);
+        if (path != null)
+            entries.Add(new MotionData(label, path));
+    }
+
+    private void TryAddHeadMotion(List<MotionData> entries, string label, ulong id, int action)
+    {
+        if (id == 0) return;
+        var path = _gameData.ResolveHeadMotion(id, action);
+        if (path != null)
+            entries.Add(new MotionData(label, path));
+    }
+
+    private void TryAddPelvisMotion(List<MotionData> entries, string label, ulong id, int action)
+    {
+        if (id == 0) return;
+        var path = _gameData.ResolvePelvisMotion(id, action);
         if (path != null)
             entries.Add(new MotionData(label, path));
     }

@@ -21,6 +21,12 @@ public interface IGameDataService
     IReadOnlyDictionary<ulong, string> EffectObjMap { get; }
     IReadOnlyDictionary<ulong, string> WeaponMotionMap { get; }
     IReadOnlyDictionary<ulong, string> MountMotionMap { get; }
+    IReadOnlyDictionary<ulong, string> CapeMotionMap { get; }
+    IReadOnlyDictionary<ulong, string> MiscMotionMap { get; }
+    IReadOnlyDictionary<ulong, string> ArmetMotionMap { get; }
+    IReadOnlyDictionary<ulong, string> SpiritMotionMap { get; }
+    IReadOnlyDictionary<ulong, string> HeadMotionMap { get; }
+    IReadOnlyDictionary<ulong, string> PelvisMotionMap { get; }
 
     IReadOnlyDictionary<int, MagicSkillGroup> MagicSkills { get; }
 
@@ -32,6 +38,12 @@ public interface IGameDataService
     string? ResolveEffectObj(uint id);
     string? ResolveWeaponMotion(ulong weaponId, int actionType);
     string? ResolveMountMotion(ulong mountId, int actionType);
+    string? ResolveCapeMotion(ulong capeId, int actionType);
+    string? ResolveMiscMotion(ulong miscId, int actionType);
+    string? ResolveArmetMotion(ulong armetId, int actionType);
+    string? ResolveSpiritMotion(ulong spiritId, int actionType);
+    string? ResolveHeadMotion(ulong headId, int actionType);
+    string? ResolvePelvisMotion(ulong pelvisId, int actionType);
 
     C3DSimpleObjInfo? FindSimpleObj(uint typeId);
     C3DEffectInfo? FindEffect(uint id);
@@ -68,6 +80,12 @@ public class GameDataService : IGameDataService
     private Dictionary<ulong, string> _effectObj = new();
     private Dictionary<ulong, string> _weaponMotion = new();
     private Dictionary<ulong, string> _mountMotion = new();
+    private Dictionary<ulong, string> _capeMotion = new();
+    private Dictionary<ulong, string> _miscMotion = new();
+    private Dictionary<ulong, string> _armetMotion = new();
+    private Dictionary<ulong, string> _spiritMotion = new();
+    private Dictionary<ulong, string> _headMotion = new();
+    private Dictionary<ulong, string> _pelvisMotion = new();
     private Dictionary<int, MagicSkillGroup> _magicSkills = new();
 
     // ── Public properties ─────────────────────────────────────────────────────
@@ -86,6 +104,12 @@ public class GameDataService : IGameDataService
     public IReadOnlyDictionary<ulong, string> EffectObjMap => _effectObj;
     public IReadOnlyDictionary<ulong, string> WeaponMotionMap => _weaponMotion;
     public IReadOnlyDictionary<ulong, string> MountMotionMap => _mountMotion;
+    public IReadOnlyDictionary<ulong, string> CapeMotionMap => _capeMotion;
+    public IReadOnlyDictionary<ulong, string> MiscMotionMap => _miscMotion;
+    public IReadOnlyDictionary<ulong, string> ArmetMotionMap => _armetMotion;
+    public IReadOnlyDictionary<ulong, string> SpiritMotionMap => _spiritMotion;
+    public IReadOnlyDictionary<ulong, string> HeadMotionMap => _headMotion;
+    public IReadOnlyDictionary<ulong, string> PelvisMotionMap => _pelvisMotion;
 
     public IReadOnlyDictionary<int, MagicSkillGroup> MagicSkills => _magicSkills;
 
@@ -148,6 +172,12 @@ public class GameDataService : IGameDataService
         _effectObj = ParseFromWdb(src, Ini("3DEffectObj.ini"), ResIniParser.Parse);
         _weaponMotion = ParseFromWdb(src, Ini("WeaponMotion.ini"), ResIniParser.Parse);
         _mountMotion = ParseFromWdb(src, Ini("MountMotion.ini"), ResIniParser.Parse);
+        _capeMotion = ParseFromWdb(src, Ini("capemotion.ini"), ResIniParser.Parse);
+        _miscMotion = ParseFromWdb(src, Ini("miscmotion.ini"), ResIniParser.Parse);
+        _armetMotion = ParseFromWdb(src, Ini("armetmotion.ini"), ResIniParser.Parse);
+        _spiritMotion = ParseFromWdb(src, Ini("spiritmotion.ini"), ResIniParser.Parse);
+        _headMotion = ParseFromWdb(src, Ini("headmotion.ini"), ResIniParser.Parse);
+        _pelvisMotion = ParseFromWdb(src, Ini("pelvismotion.ini"), ResIniParser.Parse);
 
         _magicSkills = MagicEffectIniParser.Parse(Ini("MagicEffect.ini"));
         _loadedPath = conquerPath;
@@ -230,6 +260,45 @@ public class GameDataService : IGameDataService
 
         return null;
     }
+
+    /// <summary>
+    /// Generic resolver for the per-part-type motion maps (Cape, Misc, Armet, Spirit, Head, Pelvis).
+    /// Key scheme: partId * 1000 + actionType, with a fallback to partId * 1000 + 999.
+    /// </summary>
+    private static string? ResolvePartMotion(IReadOnlyDictionary<ulong, string> map, ulong partId, int actionType)
+    {
+        ulong key = partId * 1000 + (ulong)actionType;
+        if (map.TryGetValue(key, out var p1)) return p1;
+
+        key = partId * 1000 + 999;
+        if (map.TryGetValue(key, out var p2)) return p2;
+
+        key = partId + (ulong)actionType;
+        if (map.TryGetValue(key, out var p3)) return p3;
+
+        key = partId + 999;
+        if (map.TryGetValue(key, out var p4)) return p4;
+
+        return null;
+    }
+
+    public string? ResolveCapeMotion(ulong capeId, int actionType)
+        => ResolvePartMotion(_capeMotion, capeId, actionType);
+
+    public string? ResolveMiscMotion(ulong miscId, int actionType)
+        => ResolvePartMotion(_miscMotion, miscId, actionType);
+
+    public string? ResolveArmetMotion(ulong armetId, int actionType)
+        => ResolvePartMotion(_armetMotion, armetId, actionType);
+
+    public string? ResolveSpiritMotion(ulong spiritId, int actionType)
+        => ResolvePartMotion(_spiritMotion, spiritId, actionType);
+
+    public string? ResolveHeadMotion(ulong headId, int actionType)
+        => ResolvePartMotion(_headMotion, headId, actionType);
+
+    public string? ResolvePelvisMotion(ulong pelvisId, int actionType)
+        => ResolvePartMotion(_pelvisMotion, pelvisId, actionType);
 
     // ── Finders ───────────────────────────────────────────────────────────────
 

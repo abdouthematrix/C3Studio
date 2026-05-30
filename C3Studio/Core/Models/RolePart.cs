@@ -4,9 +4,9 @@ public enum RolePartType
 {
     Armor,
     Armet,
-    Cape,
-    Head,
     Weapon,
+    Head,
+    Cape,
     Misc,
     Mount,
     Pelvis,
@@ -27,6 +27,8 @@ public class RolePart
             switch (PartType)
             {
                 case RolePartType.Mount:
+                    return (int)(Id / 10000);                                
+                case RolePartType.Spirit:
                     return (int)(Id / 10000);
                 default:
                     return (int)((Id % 1_000_000) / 1_000);
