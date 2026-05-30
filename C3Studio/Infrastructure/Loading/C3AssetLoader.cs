@@ -17,9 +17,6 @@ public sealed class C3AssetLoader
 {
     private readonly GraphicsDevice _gd;
     private IAssetFileService? _assets;
-
-    private static readonly string[] TextureExtensions = { ".dds", ".tga", ".png", ".jpg" };
-
     public C3AssetLoader(GraphicsDevice gd, IAssetFileService? assets = null)
     {
         _gd = gd;
@@ -29,7 +26,6 @@ public sealed class C3AssetLoader
     public void SetAssetService(IAssetFileService assets) => _assets = assets;
 
     // ── Model ─────────────────────────────────────────────────────────────
-
     /// <summary>Loads a single model. Returns null and logs on failure.</summary>
     public C3Model? LoadModel(string relativePath)
     {
@@ -48,11 +44,6 @@ public sealed class C3AssetLoader
             return null;
         }
     }
-
-    /// <summary>Loads a model from an already-open stream.</summary>
-    public C3Model LoadModel(Stream stream) =>
-        C3Model.LoadFromStream(stream, _gd);
-
     /// <summary>
     /// Loads multiple (mesh, texture, asb, adb) tuples and merges them into one C3Model.
     /// The first valid part becomes the base; remaining parts are appended.
@@ -133,6 +124,7 @@ public sealed class C3AssetLoader
                 foreach (var phy in part.Ptcls) merged.Ptcls.Add(phy);
                 foreach (var phy in part.Scenes) merged.Scenes.Add(phy);
                 foreach (var mot in part.Motions) merged.Motions.Add(mot);
+                foreach (var smot in part.SMotions) merged.SMotions.Add(smot);
             }
 
             partCount++;
@@ -140,15 +132,6 @@ public sealed class C3AssetLoader
 
         return (merged, partCount);
     }
-
-    /// <summary>
-    /// Convenience overload for callers that have no per-part blend info.
-    /// All parts receive the default blend (5/6 = standard alpha blend).
-    /// </summary>
-    public (C3Model? Model, int PartCount) LoadAndMerge(
-        IEnumerable<(string MeshPath, string? TexturePath)> parts) =>
-        LoadAndMerge(parts.Select(p => (p.MeshPath, p.TexturePath, 5, 6)));
-
     // ── Texture ───────────────────────────────────────────────────────────
 
     /// <summary>
@@ -183,92 +166,6 @@ public sealed class C3AssetLoader
             return -1;
         }
     }
-
-    /// <summary>
-    /// Resolves the best texture for a model using the following priority:
-    /// 1. <paramref name="explicitTexturePath"/> (if provided).
-    /// 2. Same directory as the model, same base name, first matching extension.
-    /// Returns -1 if nothing found.
-    /// </summary>
-    public int ResolveTextureForModel(string modelPath, string? explicitTexturePath = null)
-    {
-        if (!string.IsNullOrEmpty(explicitTexturePath))
-            return LoadTexture(explicitTexturePath);
-
-        var dir = Path.GetDirectoryName(modelPath) ?? string.Empty;
-        var baseName = Path.GetFileNameWithoutExtension(modelPath);
-
-        foreach (var ext in TextureExtensions)
-        {
-            var candidate = Path.Combine(dir, baseName + ext)
-                               .Replace('\\', '/');
-            int idx = LoadTexture(candidate);
-            if (idx >= 0) return idx;
-        }
-
-        return -1;
-    }
-
-    // ── Motion ────────────────────────────────────────────────────────────
-
-    /// <summary>
-    /// Applies a motion file to <paramref name="model"/>.
-    /// <para>
-    /// For merged models pass <paramref name="partCount"/> &gt; 1: the source
-    /// motions are replicated once per part so every PHY gets a bound motion
-    /// after <c>BindPhyMotions</c> runs.
-    /// </para>
-    /// Uses AssetService when available, falling back to a direct file path.
-    /// Swallows and logs exceptions so a missing motion never crashes the caller.
-    /// </summary>
-    public void ApplyMotion(C3Model model, string relativePath, Matrix rotation,
-                            int partCount = 1)
-    {
-        if (string.IsNullOrEmpty(relativePath)) return;
-        try
-        {
-            C3Model? motionModel = LoadModel(relativePath);
-            if (motionModel == null) return;
-
-            ReplicateMotions(model, motionModel, partCount, rotation);
-        }
-        catch (Exception ex)
-        {
-            Debug.WriteLine($"[C3AssetLoader] ApplyMotion '{relativePath}': {ex.Message}");
-        }
-    }
-
-    /// <summary>Applies a motion from an already-open stream.</summary>
-    public void ApplyMotion(C3Model model, Stream stream, Matrix rotation,
-                            int partCount = 1)
-    {
-        try
-        {
-            var motionModel = C3Model.LoadFromStream(stream);
-            ReplicateMotions(model, motionModel, partCount, rotation);
-        }
-        catch (Exception ex)
-        {
-            Debug.WriteLine($"[C3AssetLoader] ApplyMotion (stream): {ex.Message}");
-        }
-    }
-
-    /// <summary>
-    /// Clears the target model's motions and fills them by repeating the
-    /// source motions <paramref name="partCount"/> times — one full copy per
-    /// merged part — then re-binds all PHYs.
-    /// </summary>
-    private static void ReplicateMotions(C3Model target, C3Model source,
-                                         int partCount, Matrix rotation)
-    {
-        target.Motions.Clear();
-        for (int i = 0; i < partCount; i++)
-            foreach (var m in source.Motions)
-                target.Motions.Add(m);
-
-        C3Model.BindPhyMotions(target, rotation);
-    }
-
     // ── Private helpers ───────────────────────────────────────────────────
 
     private Texture2D DecodeTexture(Stream stream, string nameHint)

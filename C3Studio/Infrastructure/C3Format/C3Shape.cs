@@ -7,6 +7,7 @@ namespace C3Studio.Infrastructure.C3Format;
 
 public class C3SMotion
 {
+    public int PartIndex = -1;
     public Matrix[]? Frames { get; set; }
     public int CurrentFrame { get; set; }
     public Matrix LocalMatrix { get; set; } = Matrix.Identity;
@@ -183,7 +184,7 @@ public class C3Shape : IDisposable
     /// <see cref="AlphaTestEffect"/> (created lazily on the first call).
     /// Blend state from <see cref="C3BlendHelper.Resolve"/> using own D3D factors.
     /// </summary>
-    public void Draw(GraphicsDevice gd, Matrix view, Matrix projection, bool bLocal = false)
+    public void Draw(GraphicsDevice gd, Matrix view, Matrix projection, Matrix world, bool bLocal = false)
     {
         if (_vb == null || _segCount == 0) return;
 
@@ -203,7 +204,7 @@ public class C3Shape : IDisposable
 
         _effect.View = view;
         _effect.Projection = projection;
-        _effect.World = bLocal ? (Motion?.LocalMatrix ?? Matrix.Identity) : Matrix.Identity;
+        _effect.World = bLocal ? (Motion?.LocalMatrix ?? world) : world;
         _effect.Texture = tex;
         _effect.VertexColorEnabled = true;
 

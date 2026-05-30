@@ -25,81 +25,12 @@ public class C3Renderer : IDisposable
 {
     private readonly GraphicsDevice _gd;
     private C3Model? _model;
-
     private double _frameTimer;
     private double _secondsPerFrame = 1.0 / 30.0;
 
-    private readonly Dictionary<string, bool> _meshVisibility = new(StringComparer.OrdinalIgnoreCase);
-
-    private static readonly HashSet<string> DefaultHiddenSlots = new(
-     [
-        "V_ARMET_EFFECT01",
-        "V_ARMET_EFFECT02",
-        "v_armet",
-        "v_back",
-        "v_extend1",
-        "v_extend10",
-        "v_extend11",
-        "v_extend12",
-        "v_extend13",
-        "v_extend14",
-        "v_extend15",
-        "v_extend2",
-        "v_extend3",
-        "v_extend4",
-        "v_extend5",
-        "v_extend6",
-        "v_extend7",
-        "v_extend8",
-        "v_extend9",
-        "v_hair",
-        "v_head",
-        "v_hit",
-        "v_l_arm",
-        "v_l_flap",
-        "v_l_foot",
-        "v_l_forearm",
-        "v_l_leg",
-        "v_l_shield",
-        "v_l_shoulder",
-        "v_l_slot01",
-        "v_l_slot02",
-        "v_l_weapon",
-        "v_mantle",
-        "v_misc",
-        "v_mount",
-        "v_mount_01",
-        "v_pelvis",
-        "v_pet",
-        "v_r_arm",
-        "v_r_flap",
-        "v_r_foot",
-        "v_r_forearm",
-        "v_r_leg",
-        "v_r_shield",
-        "v_r_shoulder",
-        "v_r_slot01",
-        "v_r_slot02",
-        "v_r_weapon",
-        "v_rootloc",
-        "v_shell",
-        "v_slot",
-        "v_wsocket1",
-        "v_wsocket2",
-        "v_wsocket3",
-        "v_zero",
-        "v_l_shoe",
-        "v_r_shoe"
-     ],
-     StringComparer.OrdinalIgnoreCase);
-
-
-    private bool IsMeshVisible(C3Phy phy) =>
-    _meshVisibility.TryGetValue(phy.Name, out bool visible) ? visible : true;
-    public IEnumerable<string> GetPhyNames() => _meshVisibility.Keys;
-    public bool GetPhyVisibility(string name) => _meshVisibility.TryGetValue(name, out bool v) ? v : true;
-    public void SetPhyVisibility(string name, bool visible) => _meshVisibility[name] = visible;
-
+    public IEnumerable<string> GetPhyNames() => _model.GetPhyNames();
+    public bool GetPhyVisibility(string name) => _model.GetPhyVisibility(name);
+    public void SetPhyVisibility(string name, bool visible) => _model.SetPhyVisibility(name, visible);
     // ─────────────────────────────────────────────────────────────────────
     public bool IsPlaying { get; set; } = true;
     public float Fps
@@ -107,97 +38,26 @@ public class C3Renderer : IDisposable
         get => (float)(1.0 / _secondsPerFrame);
         set => _secondsPerFrame = value > 0 ? 1.0 / value : 1.0 / 30.0;
     }
-    public Matrix World { get; set; } = Matrix.Identity;
     public C3Model? Model => _model;
 
     public C3Renderer(GraphicsDevice gd) { _gd = gd; }
 
     // ── Model loading ─────────────────────────────────────────────────────    
-    public void LoadModelDirect(C3Model model, Matrix? worldRotation = null)
+    public void LoadModelDirect(C3Model model)
     {        
         _model = model;
-        _model.PhyReplaced += OnPhyReplaced;
-
-        ApplyWorldRotation(worldRotation);
         _model.Calculate();
-
-        // Populate the visibility dictionary with discovered slots
-        _meshVisibility.Clear();
-        foreach (var phy in _model.Phys)
-        {
-            if (!_meshVisibility.ContainsKey(phy.Name))
-            {
-                // Default them to hidden if they match the original blacklist
-                _meshVisibility[phy.Name] = !DefaultHiddenSlots.Contains(phy.Name);
-            }
-            phy.InitializeGPU(_gd);
-            phy.GpuTexture = C3Texture.Get(phy.TexIndex)?.Texture;
-        }
-        foreach (var scene in _model.Scenes) scene.UploadGPU(_gd);
+        _model.Initialize(_gd);
     }
-
-    private void ApplyWorldRotation(Matrix? worldRotation)
-    {
-        if (_model == null || !worldRotation.HasValue) return;
-        var rot = worldRotation.Value;
-
-        foreach (var phy in _model.Phys)
-            if (phy.Motion != null)
-            { phy.ClearMatrix(); phy.Multiply(-1, rot); }
-
-        foreach (var scene in _model.Scenes)
-            scene.ExtraMatrix = scene.ExtraMatrix * rot;
-
-        foreach (var ptc in _model.Ptcls)
-            ptc.LocalMatrix = ptc.LocalMatrix * rot;
-
-        foreach (var shape in _model.Shapes)
-            if (shape.Motion != null)
-            { shape.Motion.ClearMatrix(); shape.Motion.Multiply(rot); }
-    }
-
-    // ── Texture overrides ─────────────────────────────────────────────────
-    /// <summary>Replaces every phy's render texture with a single file.</summary>
-    public void OverrideTexture(string texturePath)
-    {
-        if (_model == null) return;
-        var tex = LoadTexture(texturePath);
-        foreach (var phy in _model.Phys) phy.GpuTexture = tex;
-    }
-
-    public void OverrideTexture(Texture2D texture)
-    {
-        if (_model == null) return;
-        foreach (var phy in _model.Phys) phy.GpuTexture = texture;
-    }
-
-    /// <summary>
-    /// Overrides the D3D blend factors for a single PHY slot.
-    /// </summary>
-    public void SetPhyBlend(int phyIndex, int asb, int adb)
-    {
-        if (_model == null || phyIndex < 0 || phyIndex >= _model.Phys.Count) return;
-        _model.Phys[phyIndex].BlendAsb = asb;
-        _model.Phys[phyIndex].BlendAdb = adb;
-    }
-
-    // ── Motion ────────────────────────────────────────────────────────────
-    public void ChangeMotion(string motionFilePath, Matrix? worldRotation = null)
+    
+    // ── Motion ────────────────────────────────────────────────────────────  
+    public void ChangeMotion(Stream stream)
     {
         if (_model == null) return;
         _frameTimer = 0;
-        _model.ChangeMotion(motionFilePath, worldRotation ?? Matrix.Identity);
+        _model.ChangeMotion(stream);
         _model.Calculate();
-        UploadAllPhyVertices();
-    }
-
-    public void ChangeMotion(Stream stream, Matrix? worldRotation = null)
-    {
-        if (_model == null) return;
-        _frameTimer = 0;
-        _model.ChangeMotion(stream, worldRotation ?? Matrix.Identity);
-        _model.Calculate();
-        UploadAllPhyVertices();
+        _model.UploadAllPhyVertices();
     }
 
     // ── Update ────────────────────────────────────────────────────────────
@@ -215,59 +75,15 @@ public class C3Renderer : IDisposable
                 _frameTimer -= _secondsPerFrame;
             }
         }
-        foreach (var phy in _model.Phys)
-            if (phy.Draw && IsMeshVisible(phy)) phy.UploadVertices();
+        _model.Update();
     }
 
     // ── Draw ──────────────────────────────────────────────────────────────
     public void Draw(Matrix view, Matrix projection)
     {
-        if (_model == null) return;
-        _gd.SamplerStates[0] = SamplerState.LinearWrap;
-
-        DrawScene(view, projection);
-        DrawPhy(view, projection);
-        DrawPtcl(view, projection);
-        DrawShape(view, projection);
+        if (_model == null) return;        
+        _model.Draw(_gd, view, projection);        
     }
-
-    private void DrawScene(Matrix view, Matrix projection)
-    {
-        foreach (var scene in _model!.Scenes)
-            scene.Draw(_gd, view, projection);
-    }
-
-    private void DrawPhy(Matrix view, Matrix projection)
-    {
-        if (_model!.Phys.Count == 0) return;
-
-        // ── Opaque pass ────────────────────────────────────────────────────
-        foreach (var phy in _model.Phys)
-        {
-            if (!IsMeshVisible(phy)) continue;
-            phy.DrawNormal(_gd, view, projection, World);
-        }
-
-        // ── Alpha / semi-transparent pass ──────────────────────────────────
-        foreach (var phy in _model.Phys)
-        {
-            if (!IsMeshVisible(phy)) continue;
-            phy.DrawAlpha(_gd, view, projection, World, bZ: false);
-        }
-    }
-
-    private void DrawPtcl(Matrix view, Matrix projection)
-    {
-        foreach (var p in _model!.Ptcls)
-            p.Draw(_gd, view, projection);
-    }
-
-    private void DrawShape(Matrix view, Matrix projection)
-    {
-        foreach (var s in _model!.Shapes)
-            s.Draw(_gd, view, projection);
-    }
-
     // ── Frame control ─────────────────────────────────────────────────────
     public void StepFrame(int delta)
     {
@@ -275,7 +91,7 @@ public class C3Renderer : IDisposable
         _model.AdvanceFrame(delta);
         _model.Calculate();
         _model.UpdateShapes();
-        UploadAllPhyVertices();
+        _model.UploadAllPhyVertices();
     }
 
     public void ResetFrame()
@@ -283,77 +99,16 @@ public class C3Renderer : IDisposable
         if (_model == null) return;
         _model.SetFrame(0);
         _model.Calculate();
-        UploadAllPhyVertices();
+        _model.UploadAllPhyVertices();
     }
-
-    // ── Helpers ───────────────────────────────────────────────────────────
-    private void UploadAllPhyVertices()
-    {
-        if (_model == null) return;
-        foreach (var phy in _model.Phys)
-            if (phy.Draw) phy.UploadVertices();
-    }
-
     public void Unload()
     {
         if (_model != null)
         {
-            _model.PhyReplaced -= OnPhyReplaced;
-            foreach (var phy in _model.Phys) phy.Dispose();
-            foreach (var scene in _model.Scenes) scene.Dispose();
-            foreach (var ptcl in _model.Ptcls) ptcl.Dispose();
-            foreach (var shape in _model.Shapes) shape.Dispose();
+            _model.Unload();           
             _model = null;
         }
     }
-
-    private void OnPhyReplaced(int slot)
-    {
-        if (_model == null || slot < 0 || slot >= _model.Phys.Count) return;
-        var phy = _model.Phys[slot];
-        phy.Rebuild(_gd);
-        phy.GpuTexture = C3Texture.Get(phy.TexIndex)?.Texture;
-    }
-
-    // ── Texture helpers ───────────────────────────────────────────────────
-    private Texture2D? ResolvePhyTexture(C3Phy phy, string? explicitPath, string dir, string baseName)
-    {
-        if (explicitPath != null && File.Exists(explicitPath)) return LoadTexture(explicitPath);
-        if (phy.TexIndex != -1) { var c = C3Texture.Get(phy.TexIndex)?.Texture; if (c != null) return c; }
-        string? found = FindTexture(dir, baseName)
-                     ?? FindTexture(dir, Path.GetFileNameWithoutExtension(phy.TexName));
-        return found != null ? LoadTexture(found) : null;
-    }
-
-    private static string? FindTexture(string dir, string? baseName)
-    {
-        if (string.IsNullOrEmpty(dir) || string.IsNullOrEmpty(baseName)) return null;
-        foreach (var ext in new[] { ".dds", ".tga", ".png", ".jpg" })
-        { string p = Path.Combine(dir, baseName + ext); if (File.Exists(p)) return p; }
-        return null;
-    }
-
-    private Texture2D LoadTexture(string path)
-    {
-        try
-        {
-            return Path.GetExtension(path).ToLowerInvariant() switch
-            {
-                ".dds" => DDSLoader.Load(_gd, path),
-                ".tga" => TGALoader.Load(_gd, path),
-                _ => LoadStream(path)
-            };
-        }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Debug.WriteLine($"[C3Renderer] '{path}': {ex.Message}");
-            var t = new Texture2D(_gd, 1, 1); t.SetData(new[] { Color.Magenta }); return t;
-        }
-    }
-
-    private Texture2D LoadStream(string p)
-    { using var s = File.OpenRead(p); return Texture2D.FromStream(_gd, s); }
-
     // ── IDisposable ───────────────────────────────────────────────────────
     public void Dispose() => Unload();
 }

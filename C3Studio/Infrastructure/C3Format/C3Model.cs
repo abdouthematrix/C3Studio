@@ -1,8 +1,11 @@
-using System.Diagnostics;
-using System.IO;
-using System.Text;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
+using System;
+using System.Diagnostics;
+using System.IO;
+using System.Numerics;
+using System.Text;
+using System.Windows.Documents;
 
 namespace C3Studio.Infrastructure.C3Format;
 
@@ -12,6 +15,9 @@ namespace C3Studio.Infrastructure.C3Format;
 /// </summary>
 public partial class C3Model
 {
+    // ── World transform applied to every loaded model ─────────────────────
+    private static readonly Matrix WorldCorrection =
+        Matrix.CreateRotationX(MathHelper.ToRadians(90f));
     internal const string ExpectedVersion = "MAXFILE C3 00001";
     internal const int MaxPhys = 32;
     internal const int MaxMotions = 32;
@@ -22,12 +28,95 @@ public partial class C3Model
     public List<C3Scene> Scenes { get; } = new();
     public List<C3Shape> Shapes { get; } = new();
 
-    internal readonly List<C3SMotion> _pendingMotions = new();
+    public List<C3SMotion> SMotions = new();
 
-    /// <summary>Raised when a PHY slot is replaced. Arg = slot index.</summary>
-    public event Action<int>? PhyReplaced;
-
+    public Matrix World { get; set; } = Matrix.Identity;
     // ------------------------------------------------------------------
+    private readonly Dictionary<string, bool> _meshVisibility = new(StringComparer.OrdinalIgnoreCase);
+
+    private static readonly HashSet<string> DefaultHiddenSlots = new(
+     [
+        "V_ARMET_EFFECT01",
+        "V_ARMET_EFFECT02",
+        "v_armet",
+        "v_back",
+        "v_extend1",
+        "v_extend10",
+        "v_extend11",
+        "v_extend12",
+        "v_extend13",
+        "v_extend14",
+        "v_extend15",
+        "v_extend2",
+        "v_extend3",
+        "v_extend4",
+        "v_extend5",
+        "v_extend6",
+        "v_extend7",
+        "v_extend8",
+        "v_extend9",
+        "v_hair",
+        "v_head",
+        "v_hit",
+        "v_l_arm",
+        "v_l_flap",
+        "v_l_foot",
+        "v_l_forearm",
+        "v_l_leg",
+        "v_l_shield",
+        "v_l_shoulder",
+        "v_l_slot01",
+        "v_l_slot02",
+        "v_l_weapon",
+        "v_mantle",
+        "v_misc",
+        "v_mount",
+        "v_mount_01",
+        "v_pelvis",
+        "v_pet",
+        "v_r_arm",
+        "v_r_flap",
+        "v_r_foot",
+        "v_r_forearm",
+        "v_r_leg",
+        "v_r_shield",
+        "v_r_shoulder",
+        "v_r_slot01",
+        "v_r_slot02",
+        "v_r_weapon",
+        "v_rootloc",
+        "v_shell",
+        "v_slot",
+        "v_wsocket1",
+        "v_wsocket2",
+        "v_wsocket3",
+        "v_zero",
+        "v_l_shoe",
+        "v_r_shoe"
+     ],
+     StringComparer.OrdinalIgnoreCase);
+    private bool IsMeshVisible(C3Phy phy) =>
+    _meshVisibility.TryGetValue(phy.Name, out bool visible) ? visible : true;
+    public IEnumerable<string> GetPhyNames() => _meshVisibility.Keys;
+    public bool GetPhyVisibility(string name) => _meshVisibility.TryGetValue(name, out bool v) ? v : true;
+    public void SetPhyVisibility(string name, bool visible) => _meshVisibility[name] = visible;
+    // ------------------------------------------------------------------
+    public void Initialize(GraphicsDevice gd)
+    {
+        // Populate the visibility dictionary with discovered slots
+        _meshVisibility.Clear();
+        foreach (var phy in Phys)
+        {
+            if (!_meshVisibility.ContainsKey(phy.Name))
+            {
+                // Default them to hidden if they match the original blacklist
+                _meshVisibility[phy.Name] = !DefaultHiddenSlots.Contains(phy.Name);
+            }
+            phy.InitializeGPU(gd);
+            phy.GpuTexture = C3Texture.Get(phy.TexIndex)?.Texture;
+        }
+        foreach (var scene in Scenes) scene.UploadGPU(gd);
+    }
     public static C3Model Load(string filePath, GraphicsDevice? gd = null)
     {
         if (!File.Exists(filePath))
@@ -36,7 +125,6 @@ public partial class C3Model
         var model = LoadFromStream(fs, gd);
         return model;
     }
-
     public static C3Model LoadFromStream(Stream stream, GraphicsDevice? gd = null)
     {
         var model = new C3Model();
@@ -99,7 +187,7 @@ public partial class C3Model
                     break;
 
                 case "SMOT":
-                    model._pendingMotions.Add(C3SMotion.Load(br));
+                    model.SMotions.Add(C3SMotion.Load(br));
                     break;
                     
                 case "CAME":
@@ -120,81 +208,81 @@ public partial class C3Model
             if (stream.Position > chunkEnd) stream.Seek(chunkEnd, SeekOrigin.Begin);
         }
 
-        BindPhyMotions(model);
-
-        for (int i = 0; i < model.Shapes.Count; i++)
-            if (i < model._pendingMotions.Count)
-                model.Shapes[i].Motion = model._pendingMotions[i];
-
+        model.BindPhyMotions();
+        model.BindShapeMotions();
+        model.ApplyWorldRotation(worldRotation: WorldCorrection);
         return model;
     }
-    
-    //// ------------------------------------------------------------------
-    //public bool ReplacePhy(string targetName, string sourcePath,
-    //                       string? sourceMeshName  = null,
-    //                       string? texturePath     = null,
-    //                       bool    useSourceMotion = false)
-    //{
-    //    if (!File.Exists(sourcePath)) return false;
-    //    C3Model src;
-    //    try { src = Load(sourcePath, loadTextures: false); } catch { return false; }
-    //    return ReplacePhyFromModel(targetName, src, sourceMeshName, texturePath, useSourceMotion);
-    //}
-
-    //public bool ReplacePhyFromModel(string targetName, C3Model sourceModel,
-    //                                string? sourceMeshName  = null,
-    //                                string? texturePath     = null,
-    //                                bool    useSourceMotion = false)
-    //{
-    //    int slot = Phys.FindIndex(p => string.Equals(p.Name, targetName, StringComparison.OrdinalIgnoreCase));
-    //    if (slot == -1) return false;
-    //    int srcIdx = sourceMeshName == null ? 0
-    //        : sourceModel.Phys.FindIndex(p => string.Equals(p.Name, sourceMeshName, StringComparison.OrdinalIgnoreCase));
-    //    if (srcIdx < 0 || srcIdx >= sourceModel.Phys.Count) return false;
-
-    //    var newPhy = sourceModel.Phys[srcIdx];
-    //    newPhy.Name = targetName;
-    //    if (texturePath != null) newPhy.TexIndex = C3Texture.Texture_Load(texturePath);
-
-    //    C3Motion? oldMotion = Phys[slot].Motion;
-    //    if (!useSourceMotion || srcIdx >= sourceModel.Motions.Count)
-    //    {
-    //        newPhy.Motion = oldMotion;
-    //    }
-    //    else
-    //    {
-    //        var newMotion = sourceModel.Motions[srcIdx];
-    //        newPhy.Motion = newMotion;
-    //        if (oldMotion != null)
-    //        {
-    //            Matrix combined = oldMotion.GetBoneMatrix(0)
-    //                            * (oldMotion.BoneMatrix.Count > 0 ? oldMotion.BoneMatrix[0] : Matrix.Identity);
-    //            for (int n = 0; n < newMotion.BoneMatrix.Count; n++)
-    //                newMotion.BoneMatrix[n] = combined;
-    //        }
-    //    }
-
-    //    Phys[slot] = newPhy;
-    //    newPhy.Calculate();
-    //    PhyReplaced?.Invoke(slot);
-    //    return true;
-    //}
-
-    //// ------------------------------------------------------------------
+    public void BindPhyMotions()
+    {
+        for (int i = 0; i < Phys.Count; i++)
+        {
+            if (i < Motions.Count)
+            {
+                Phys[i].Motion = Motions[i];
+                if (Phys[i].Motion != null)
+                    Phys[i].Motion.PartIndex = Phys[i].PartIndex;
+            }
+        }
+    }
+    public void BindShapeMotions()
+    {
+        for (int i = 0; i < Shapes.Count; i++)
+        {
+            if (i < SMotions.Count)
+            {
+                Shapes[i].Motion = SMotions[i];
+                if (Shapes[i].Motion != null)
+                    Shapes[i].Motion.PartIndex = Shapes[i].PartIndex;
+            }           
+        }
+    }
     public C3Phy? FindPhy(string name) =>
         Phys.Find(p => string.Equals(p.Name, name, StringComparison.OrdinalIgnoreCase));
-
-    public bool IsPlaceholder(string name)
-    { var p = FindPhy(name); return p == null || p.TotalIndexCount == 0; }
-
-    public void ChangeMotion(string motionFilePath, Matrix rotationMatrix)
+    public C3Motion GetVirtualMotion(string name)
     {
-        using var fs = File.OpenRead(motionFilePath);
-        ChangeMotion(fs, rotationMatrix);
-    }
+        if (string.IsNullOrEmpty(name))
+            return null;
 
-    // New — used by the renderer when a stream is already open
-    public void ChangeMotion(Stream stream, Matrix rotationMatrix, int index=0)
+        // Returns null if FindPhy(name) is null; otherwise returns phy.Motion
+        return FindPhy(name)?.Motion;
+    }
+    public void SetVirtualMotion(C3Motion pMotion)
+    {
+        // 1. Safe Null/Bound Checking
+        if (pMotion == null ||
+            Phys == null ||
+            Phys.Count == 0)        
+            return;
+        
+        var targetPhy = Phys.FirstOrDefault();
+        if (targetPhy == null ||
+            targetPhy?.Motion == null)        
+            return;
+        // Cache the motion reference to avoid nested pointer-chasing in the loop
+        var targetMotion = targetPhy.Motion;
+        var dwBoneCount = targetMotion.BoneCount;
+
+        // 2. Bone Matrix Transformation Loop
+        for (int n = 0; n < dwBoneCount; n++)
+        {            
+            var mm = pMotion.GetBoneMatrix(0);
+           
+            targetMotion.BoneMatrix[n] = mm;
+            targetMotion.BoneMatrix[n] *= pMotion.BoneMatrix[0];
+        }
+
+        //// 3. Update Position Coords for all Mesh Parts
+        //uint dwPhyNum = m_infoPart.p3DMesh.m_dwPhyNum;
+        //for (uint n = 0; n < dwPhyNum; n++)
+        //{
+        //    // M41, M42, M43 represent X, Y, Z translation components in a 4x4 matrix
+        //    m_infoPart.p3DMesh.m_x[n] = pMotion.matrix[0].M41;
+        //    m_infoPart.p3DMesh.m_y[n] = pMotion.matrix[0].M42;
+        //    m_infoPart.p3DMesh.m_z[n] = pMotion.matrix[0].M43;
+        //}
+    }    
+    public void ChangeMotion(Stream stream, int index=-1)
     {
         if (index == -1)
         {
@@ -223,11 +311,8 @@ public partial class C3Model
             }
 
         }
-       
-
-        BindPhyMotions(this, rotationMatrix);
-    }
-
+        this.BindPhyMotions();
+    }    
     public void AdvanceFrame(int step = 1)
     {
         foreach (var p in Phys) p.Motion?.NextFrame(step);
@@ -235,17 +320,14 @@ public partial class C3Model
         foreach (var s in Scenes) s.NextFrame(step);
         foreach (var s in Shapes) s.NextFrame(step);
     }
-
     public void SetFrame(int frame)
     {
         foreach (var p in Phys) p.Motion?.SetFrame(frame);
         foreach (var p in Ptcls) p.SetFrame(frame);
         foreach (var s in Shapes) s.SetFrame(frame);
     }
-
     public void Calculate() { foreach (var p in Phys) p.Calculate(); }
     public void UpdateShapes(bool b = false) { foreach (var s in Shapes) s.Update(b); }
-
     public int MaxFrameCount
     {
         get
@@ -267,28 +349,96 @@ public partial class C3Model
             return m;
         }
     }
-
-    internal static void BindPhyMotions(C3Model model, Matrix? rotation = null)
+    private void ApplyWorldRotation(Matrix? worldRotation)
     {
-        for (int i = 0; i < model.Phys.Count; i++)
+        if (!worldRotation.HasValue) return;
+        var rot = worldRotation.Value;
+
+        foreach (var phy in Phys)
+            if (phy.Motion != null)
+            { phy.ClearMatrix(); phy.Multiply(-1, rot); }
+
+        foreach (var scene in Scenes)
+            scene.ExtraMatrix = scene.ExtraMatrix * rot;
+
+        foreach (var ptc in Ptcls)
+            ptc.LocalMatrix = ptc.LocalMatrix * rot;
+
+        foreach (var shape in Shapes)
+            if (shape.Motion != null)
+            { shape.Motion.ClearMatrix(); shape.Motion.Multiply(rot); }
+
+        foreach (var Motion in Motions)
         {
-            if (i < model.Motions.Count)
-            {
-                model.Phys[i].Motion = model.Motions[i];
-                if (model.Phys[i].Motion != null)
-                    model.Phys[i].Motion.PartIndex = model.Phys[i].PartIndex;
-            }
-            else
-            {
-                var stub = new C3Motion { BoneCount = 1, FrameCount = 1 };
-                stub.BoneMatrix.Add(Matrix.Identity);
-                stub.KeyFrames.Add(new C3KeyFrame { Pos = 0, BoneMatrices = { Matrix.Identity } });
-                model.Phys[i].Motion = stub;
-                if (model.Phys[i].Motion != null)
-                    model.Phys[i].Motion.PartIndex = model.Phys[i].PartIndex;
-            }
-            if (rotation.HasValue)
-            { model.Phys[i].Motion!.ClearMatrix(); model.Phys[i].Motion!.Multiply(-1, rotation.Value); }
+            //ClearMatrix()
+            for (int n = 0; n < Motion.BoneCount; n++)
+                Motion.BoneMatrix[n] = Matrix.Identity;
+            //Multiply
+            for (int n = 0; n < Motion.BoneCount; n++)
+                Motion.BoneMatrix[n] = Motion.BoneMatrix[n] * rot;
         }
+        foreach (var sMotion in SMotions)
+        {
+            sMotion.ClearMatrix();
+            sMotion.Multiply(rot);
+        }
+    }
+    public void Update()
+    {
+        foreach (var phy in Phys)
+            if (phy.Draw && IsMeshVisible(phy)) phy.UploadVertices();
+    }
+    public void Draw(GraphicsDevice _gd, Matrix view, Matrix projection)
+    {
+        _gd.SamplerStates[0] = SamplerState.LinearWrap;
+        DrawScene(_gd, view, projection);
+        DrawPhy(_gd, view, projection);
+        DrawPtcl(_gd, view, projection);
+        DrawShape(_gd, view, projection);
+    }
+    private void DrawScene(GraphicsDevice _gd, Matrix view, Matrix projection)
+    {
+        foreach (var scene in Scenes)
+            scene.Draw(_gd, view, projection);
+    }
+    private void DrawPhy(GraphicsDevice _gd, Matrix view, Matrix projection)
+    {
+        if (Phys.Count == 0) return;
+
+        // ── Opaque pass ────────────────────────────────────────────────────
+        foreach (var phy in Phys)
+        {
+            if (!IsMeshVisible(phy)) continue;
+            phy.DrawNormal(_gd, view, projection, World);
+        }
+
+        // ── Alpha / semi-transparent pass ──────────────────────────────────
+        foreach (var phy in Phys)
+        {
+            if (!IsMeshVisible(phy)) continue;
+            phy.DrawAlpha(_gd, view, projection, World, bZ: false);
+        }
+    }
+    private void DrawPtcl(GraphicsDevice _gd, Matrix view, Matrix projection)
+    {
+        foreach (var p in Ptcls)
+            p.Draw(_gd, view, projection, World);
+    }
+    private void DrawShape(GraphicsDevice _gd, Matrix view, Matrix projection)
+    {
+        foreach (var s in Shapes)
+            s.Draw(_gd, view, projection, World);
+    }
+    public void UploadAllPhyVertices()
+    {
+        foreach (var phy in Phys)
+            if (phy.Draw) phy.UploadVertices();
+    }
+    public void Unload()
+    {
+        foreach (var phy in Phys) phy.Dispose();
+        foreach (var scene in Scenes) scene.Dispose();
+        foreach (var ptcl in Ptcls) ptcl.Dispose();
+        foreach (var shape in Shapes) shape.Dispose();
     }
 }

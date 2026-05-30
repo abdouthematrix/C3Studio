@@ -18,10 +18,6 @@ namespace C3Studio.MonoGame;
 /// </summary>
 public class C3StudioGame : WpfGame
 {
-    // ── World transform applied to every loaded model ─────────────────────
-    private static readonly Matrix WorldCorrection =
-        Matrix.CreateRotationX(MathHelper.ToRadians(90f));
-
     // ── DI / services ─────────────────────────────────────────────────────
     private IAssetFileService? _assetService;
     public IAssetFileService? AssetService
@@ -138,43 +134,6 @@ public class C3StudioGame : WpfGame
     // ── Public loading API ────────────────────────────────────────────────
 
     /// <summary>
-    /// Loads a single C3 model (path is relative — resolved via AssetService / WDF).
-    /// Optionally overrides every PHY's texture with <paramref name="texturePath"/>.
-    /// </summary>
-    public void LoadC3Asset(string relativePath, string? texturePath = null)
-    {
-        if (_renderer == null || _loader == null) return;
-        try
-        {
-            _renderer.Unload();
-            var model = _loader.LoadModel(relativePath);
-            if (model == null) return;
-
-            int texIdx = _loader.ResolveTextureForModel(relativePath, texturePath);
-            if (texIdx >= 0)
-            {
-                var tex = C3Texture.Get(texIdx)?.Texture;
-                foreach (var phy in model.Phys)
-                    phy.TexIndex = texIdx;                
-                _renderer.LoadModelDirect(model, WorldCorrection);
-                if (tex != null) _renderer.OverrideTexture(tex);
-            }
-            else
-            {
-                _renderer.LoadModelDirect(model, WorldCorrection);
-            }
-
-            AutoFitCamera(model);
-            ModelLoaded?.Invoke();
-        }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Debug.WriteLine(
-                $"[C3StudioGame] LoadC3Asset '{relativePath}': {ex.Message}");
-        }
-    }
-
-    /// <summary>
     /// Loads and merges multiple (mesh, texture, asb, adb) tuples into one model.
     /// Used for multi-part NPCs / SimpleObjs / equipment that carry per-slot blend info.
     /// </summary>
@@ -190,9 +149,9 @@ public class C3StudioGame : WpfGame
             if (model == null) return;
 
             if (!string.IsNullOrEmpty(motionPath))
-                _loader.ApplyMotion(model, motionPath, WorldCorrection, partCount);
+                ChangeMotion(motionPath);
 
-            _renderer.LoadModelDirect(model, WorldCorrection);
+            _renderer.LoadModelDirect(model);
             AutoFitCamera(model);
             ModelLoaded?.Invoke();
         }
@@ -201,17 +160,6 @@ public class C3StudioGame : WpfGame
             System.Diagnostics.Debug.WriteLine($"[C3StudioGame] LoadC3Parts: {ex.Message}");
         }
     }
-
-    /// <summary>
-    /// Overrides the D3D blend factors for a single PHY slot in the current model.
-    /// Call after <see cref="LoadC3Parts"/> to fine-tune individual meshes.
-    /// </summary>
-    /// <param name="phyIndex">Zero-based index into the model's PHY list.</param>
-    /// <param name="asb">D3D source blend factor (e.g. 5 = SrcAlpha, 2 = One).</param>
-    /// <param name="adb">D3D destination blend factor (e.g. 6 = InvSrcAlpha, 2 = One).</param>
-    public void SetPhyBlend(int phyIndex, int asb, int adb) =>
-        _renderer?.SetPhyBlend(phyIndex, asb, adb);
-
     /// <summary>Swaps the animation on the current model.</summary>
     public void ChangeMotion(string relativePath)
     {
@@ -221,12 +169,8 @@ public class C3StudioGame : WpfGame
             if (_assetService != null)
             {
                 using var stream = _assetService.Open(relativePath);
-                _renderer.ChangeMotion(stream, WorldCorrection);
-            }
-            else
-            {
-                _renderer.ChangeMotion(relativePath, WorldCorrection);
-            }
+                _renderer.ChangeMotion(stream);
+            }            
         }
         catch (Exception ex)
         {

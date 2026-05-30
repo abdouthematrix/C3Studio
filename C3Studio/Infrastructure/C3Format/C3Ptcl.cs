@@ -137,7 +137,7 @@ public class C3Ptcl : IDisposable
     /// Blend state is resolved via <see cref="C3BlendHelper"/> unless
     /// <paramref name="blendOverride"/> is provided.
     /// </summary>
-    public void Draw(GraphicsDevice gd, Matrix view, Matrix projection,
+    public void Draw(GraphicsDevice gd, Matrix view, Matrix projection, Matrix world,
                      BlendState? blendOverride = null)
     {
         if (Frames == null || _vb == null || _ib == null) return;
@@ -241,7 +241,7 @@ public class C3Ptcl : IDisposable
 
         _effect.View = Matrix.Identity;
         _effect.Projection = projection;
-        _effect.World = Matrix.Identity;
+        _effect.World = world;
         _effect.Texture = tex;
         _effect.VertexColorEnabled = true;
 
