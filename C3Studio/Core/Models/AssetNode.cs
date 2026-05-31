@@ -1,3 +1,5 @@
+using C3Studio.Infrastructure.Loading;
+
 namespace C3Studio.Core.Models;
 
 /// <summary>A node in the asset tree (NPC, SimpleObj, category header…).</summary>
@@ -37,6 +39,8 @@ public sealed class AssetData
     /// <c>Effects</c> list rather than merged into its mesh pool.
     /// </summary>
     public EffectDescriptor[] Effects { get; init; } = [];
+
+    public PartDescriptor[] RoleParts { get; init; } = [];
 
     /// <summary>
     /// Per-part D3D source-blend factor (index matches <see cref="MeshPaths"/>).

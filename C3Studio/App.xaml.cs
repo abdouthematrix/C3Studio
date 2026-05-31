@@ -41,5 +41,6 @@ public partial class App : Application
 
         sc.AddTransient<SetupViewModel>();
         sc.AddTransient<WorkspaceViewModel>();
+        sc.AddTransient<RoleViewerViewModel>();
     }
 }

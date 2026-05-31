@@ -138,8 +138,8 @@ public class C3StudioGame : WpfGame
     }
 
     public void LoadC3Role(
-        IEnumerable<PartDescriptor> slots,
-        string? motionPath = null)
+    IEnumerable<PartDescriptor> slots,
+    string? motionPath = null)
     {
         if (_renderer == null || _loader == null) return;
         try
@@ -151,6 +151,10 @@ public class C3StudioGame : WpfGame
 
             _renderer.LoadRole(role);
 
+            role.BindAllParts();
+            role.Calculate();
+            role.UploadAllVertices();
+
             if (!string.IsNullOrEmpty(motionPath))
                 ChangeMotion(motionPath);
 
@@ -160,6 +164,45 @@ public class C3StudioGame : WpfGame
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine($"[C3StudioGame] LoadC3Role: {ex.Message}");
+        }
+    }
+    // ── Static Part Attachment (Role Viewer) ──────────────────────────────
+    public void AttachToRole(string slotName, IEnumerable<PartDescriptor> parts)
+    {
+        if (_renderer?.Role == null || _loader == null) return;
+
+        // Remove existing attachment in this slot if any
+        var oldPart = _renderer.Role.GetSlot(slotName);
+        oldPart?.Dispose();
+
+        foreach (var desc in parts)
+        {
+            var rolePart = _loader.LoadPart(desc.MeshPath, desc.TexturePath, slotName, desc.Asb, desc.Adb);
+            if (rolePart != null)
+            {
+                rolePart.Initialize(GraphicsDevice);
+                _renderer.Role.AssignSlot(rolePart);
+                break;
+            }
+        }
+
+        _renderer.Role.BindAllParts();
+        _renderer.Role.Calculate();
+        _renderer.Role.UploadAllVertices();
+    }
+
+    public void DetachFromRole(string slotName)
+    {
+        if (_renderer?.Role == null) return;
+
+        var part = _renderer.Role.GetSlot(slotName);
+        if (part != null)
+        {
+            part.Dispose();
+            _renderer.Role.ClearSlot(slotName);
+
+            _renderer.Role.Calculate();
+            _renderer.Role.UploadAllVertices();
         }
     }
     public void ChangeMotion(string relativePath)
@@ -311,12 +354,10 @@ public class C3StudioGame : WpfGame
         var max = new Vector3(float.MinValue);
         bool any = false;
 
-        foreach (var part in role.AllParts())
+        // 1. Calculate boundaries strictly on the Body (ignores weapons/capes so camera doesn't zoom too far out)
+        if (role.Body != null)
         {
-            // Only use the Body-like parts for bounding (skip attachment accessories)
-            if (part.SlotName != "Body" && !part.SlotName.StartsWith("BodyExtra")) continue;
-
-            foreach (var phy in part.Model.Phys)
+            foreach (var phy in role.Body.Model.Phys)
             {
                 if (phy.OutputVertices.Count == 0) continue;
                 foreach (var v in phy.OutputVertices)
@@ -328,13 +369,21 @@ public class C3StudioGame : WpfGame
             }
         }
 
-        // Fallback: fit to any part if no body vertices found
+        // 2. Fallback: fit to any attachment if no body vertices exist
         if (!any)
         {
             foreach (var part in role.AllParts())
+            {
                 foreach (var phy in part.Model.Phys)
+                {
                     foreach (var v in phy.OutputVertices)
-                    { min = Vector3.Min(min, v.Position); max = Vector3.Max(max, v.Position); any = true; }
+                    {
+                        min = Vector3.Min(min, v.Position);
+                        max = Vector3.Max(max, v.Position);
+                        any = true;
+                    }
+                }
+            }
         }
 
         if (!any) { _camera.Reset(); return; }

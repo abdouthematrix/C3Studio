@@ -49,6 +49,12 @@
                             Content="⚙  Setup"
                             Style="{StaticResource GhostButton}"
                             ToolTip="Change game path and settings" />
+                        <Button
+                            Padding="10,5"
+                            Command="{Binding GoToRoleViewerCommand}"
+                            Content="🎒  Role Viewer"
+                            Style="{StaticResource GhostButton}"
+                            ToolTip="Control Role Parts" />
                     </StackPanel>
                 </Border>
                 <Border BorderBrush="{StaticResource Br.Border}" BorderThickness="0,0,0,1">

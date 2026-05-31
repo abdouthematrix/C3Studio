@@ -8,6 +8,7 @@ namespace C3Studio.Core.Services;
 
 public interface INavigationService
 {
+    void GoToRoleViewer();
     void GoToSetup();
     void GoToWorkspace();
 }
@@ -21,6 +22,13 @@ public class NavigationService : INavigationService
     private static MainWindow Win =>
         (MainWindow)Application.Current.MainWindow;
 
+
+    public void GoToRoleViewer()
+    {
+        var vm = _sp.GetRequiredService<RoleViewerViewModel>();
+        var view = new RoleViewerPage { DataContext = vm };
+        Win.Navigate(view);        
+    }
     public void GoToSetup()
     {
         var vm   = _sp.GetRequiredService<SetupViewModel>();

@@ -1,5 +1,6 @@
 using C3Studio.Core.Models;
 using C3Studio.Core.Services;
+using C3Studio.Infrastructure.Loading;
 using C3Studio.MonoGame;
 using System;
 using System.Collections.Generic;
@@ -251,9 +252,12 @@ public class WorkspaceViewModel : ViewModelBase
         ClearSearchCommand = Cmd(() => SearchText = string.Empty);
         ExportNodeCommand = Cmd(ExportNode, () => CanExport());
         GoToSetupCommand = Cmd(() => _nav.GoToSetup());
+        GoToRoleViewerCommand = Cmd(() => _nav.GoToRoleViewer());
+
     }
 
     public ICommand GoToSetupCommand { get; }
+    public ICommand GoToRoleViewerCommand { get; }
 
     private async void ExportNode()
     {
@@ -1223,11 +1227,9 @@ public class WorkspaceViewModel : ViewModelBase
     {
         var motions = new List<MotionData>();
 
-        // ── Resolve each section independently ───────────────────────────
         string[] bodyMeshes = [], bodyTextures = [];
         int[] bodyAsb = [], bodyAdb = [];
 
-        // Hair is its own visual section for equipment-based roles
         string[] hairMeshes = [], hairTextures = [];
         int[] hairAsb = [], hairAdb = [];
 
@@ -1242,22 +1244,12 @@ public class WorkspaceViewModel : ViewModelBase
         }
         else if (role.IsEquipmentRole)
         {
-            // ── Body (Armor) ──────────────────────────────────────────────
-            // Lookup order (first hit wins):
-            //   1. RawArmorId       — as stored in the ini, e.g. 3135990
-            //   2. EffectiveArmorId — look-rebound: look*1_000_000 + (raw%1_000_000)/10*10
-            //   3. look * 1_000_000 — naked body fallback (SetLook default)
             var armor = _gameData.FindRolePart(role.RawArmorId, RolePartType.Armor)
                      ?? _gameData.FindRolePart(role.EffectiveArmorId, RolePartType.Armor)
                      ?? (role.RawArmorId != 0 ? _gameData.FindRolePart((uint)(role.Look * 1_000_000), RolePartType.Armor) : null);
             if (armor != null)
                 (bodyMeshes, bodyTextures, bodyAsb, bodyAdb) = BuildMeshArraysForRolePart(armor);
 
-            // ── Hair (Armet) ──────────────────────────────────────────────
-            // Lookup order (first hit wins):
-            //   1. RawHairId        — as stored in the ini, e.g. 3119524
-            //   2. EffectiveHairId  — look-rebound: look*1_000_000 + (raw%1_000_000)/10*10
-            //   No fallback — bare head is valid when both lookups fail.
             if (role.RawHairId != 0)
             {
                 var armet = _gameData.FindRolePart(role.RawHairId, RolePartType.Armet)
@@ -1267,8 +1259,6 @@ public class WorkspaceViewModel : ViewModelBase
             }
 
             TryAddMotion(motions, "StandBy", (ulong)(role.Look * 1_000_000 + (int)RoleActionType.StandBy));
-            // ── Look-based motions ─────────────────────────────────────────
-            // Mirrors C3DRole::SetAction: idBodyMotion = look * 1_000_000 + actionType
             for (int i = 0; i < 999; i++)
             {
                 RoleActionType action = (RoleActionType)i;
@@ -1276,7 +1266,6 @@ public class WorkspaceViewModel : ViewModelBase
                 ulong idBodyMotion = (ulong)(role.Look * 1_000_000 + (int)action);
                 TryAddMotion(motions, name, idBodyMotion);
             }
-
         }
 
         string[] fxfMeshes = [], fxfTextures = [], fxbMeshes = [], fxbTextures = [];
@@ -1284,21 +1273,25 @@ public class WorkspaceViewModel : ViewModelBase
 
         if (!string.IsNullOrEmpty(role.FEffect))
             (fxfMeshes, fxfTextures, fxfAsb, fxfAdb) = BuildEffectParts(role.FEffect);
-
         if (!string.IsNullOrEmpty(role.BEffect))
             (fxbMeshes, fxbTextures, fxbAsb, fxbAdb) = BuildEffectParts(role.BEffect);
 
-        // ── Combine body+hair for MeshPaths; effects go into Effects ─────
         var fxDescriptors = BuildEffectDescriptors(
             fxfMeshes.Concat(fxbMeshes).ToArray(),
             fxfTextures.Concat(fxbTextures).ToArray(),
             fxfAsb.Concat(fxbAsb).ToArray(),
             fxfAdb.Concat(fxbAdb).ToArray());
 
-        var allMeshes = bodyMeshes.Concat(hairMeshes).ToArray();
-        var allTextures = bodyTextures.Concat(hairTextures).ToArray();
-        var allAsb = bodyAsb.Concat(hairAsb).ToArray();
-        var allAdb = bodyAdb.Concat(hairAdb).ToArray();
+        // --- NEW: Map to Descriptors instead of flattening arrays ---
+        var bodyDescriptors = bodyMeshes.Select((m, i) => new PartDescriptor("Body", m, bodyTextures[i], bodyAsb[i], bodyAdb[i]))
+                                        .Where(p => !string.IsNullOrEmpty(p.MeshPath) && !p.MeshPath.StartsWith('?'))
+                                        .ToArray();
+
+        var hairDescriptors = hairMeshes.Select((m, i) => new PartDescriptor("Armet", m, hairTextures[i], hairAsb[i], hairAdb[i]))
+                                        .Where(p => !string.IsNullOrEmpty(p.MeshPath) && !p.MeshPath.StartsWith('?'))
+                                        .ToArray();
+
+        var allRoleParts = bodyDescriptors.Concat(hairDescriptors).ToArray();
         var motionArr = motions.ToArray();
 
         var node = new AssetNode
@@ -1307,30 +1300,25 @@ public class WorkspaceViewModel : ViewModelBase
             Label = role.Key,
         };
 
-        if (allMeshes.Length > 0 || motionArr.Length > 0 || fxDescriptors.Length > 0)
+        // Feed to the new RoleParts property
+        if (allRoleParts.Length > 0 || motionArr.Length > 0 || fxDescriptors.Length > 0)
         {
             node.AssetData = new AssetData
             {
-                MeshPaths = allMeshes,
-                TexturePaths = allTextures,
+                RoleParts = allRoleParts,
                 Motions = motionArr,
-                Asb = allAsb,
-                Adb = allAdb,
                 Effects = fxDescriptors,
             };
         }
 
-        // ── Determine which sections are non-empty for grouping logic ─────
-        bool hasBody = bodyMeshes.Length > 0;
-        bool hasHair = hairMeshes.Length > 0;
+        bool hasBody = bodyDescriptors.Length > 0;
+        bool hasHair = hairDescriptors.Length > 0;
         bool hasFxF = fxfMeshes.Length > 0;
         bool hasFxB = fxbMeshes.Length > 0;
-        bool hasFx = hasFxF || hasFxB;
-        // Group into named containers when there are two or more non-empty sections
         int sectionCount = (hasBody ? 1 : 0) + (hasHair ? 1 : 0) + (hasFxF ? 1 : 0) + (hasFxB ? 1 : 0);
         bool grouped = sectionCount >= 2;
 
-        // ── Body section ──────────────────────────────────────────────────
+        // ── Body section ──
         if (hasBody)
         {
             AssetNode bodyContainer;
@@ -1344,92 +1332,49 @@ public class WorkspaceViewModel : ViewModelBase
                 {
                     Icon = "🔷",
                     Label = bodyLabel,
-                    AssetData = new AssetData
-                    {
-                        MeshPaths = bodyMeshes,
-                        TexturePaths = bodyTextures,
-                        Motions = motionArr,
-                        Asb = bodyAsb,
-                        Adb = bodyAdb,
-                    }
+                    AssetData = new AssetData { RoleParts = bodyDescriptors, Motions = motionArr }
                 };
                 node.Children.Add(bodyContainer);
             }
-            else
-            {
-                bodyContainer = node;   // hoist directly onto root
-            }
+            else bodyContainer = node;
 
-            if (bodyMeshes.Length > 1)
-                for (int i = 0; i < bodyMeshes.Length; i++)
-                {
-                    if (string.IsNullOrEmpty(bodyMeshes[i]) || bodyMeshes[i].StartsWith('?')) continue;
-
+            if (bodyDescriptors.Length > 1)
+                foreach (var part in bodyDescriptors)
                     bodyContainer.Children.Add(new AssetNode
                     {
                         Icon = "▫",
-                        Label = Path.GetFileNameWithoutExtension(bodyMeshes[i]),
-                        AssetData = new AssetData
-                        {
-                            MeshPaths = [bodyMeshes[i]],
-                            TexturePaths = [bodyTextures[i]],
-                            Motions = motionArr,
-                            Asb = [bodyAsb[i]],
-                            Adb = [bodyAdb[i]],
-                        }
+                        Label = Path.GetFileNameWithoutExtension(part.MeshPath),
+                        AssetData = new AssetData { RoleParts = [part], Motions = motionArr }
                     });
-                }
         }
 
-        // ── Hair section (equipment roles only) ───────────────────────────
+        // ── Hair section ──
         if (hasHair)
         {
             AssetNode hairContainer;
             if (grouped)
             {
-                // Label mirrors the armet ID that was resolved: e.g. "[3119520] Hair"
                 hairContainer = new AssetNode
                 {
                     Icon = "💇",
                     Label = $"[{role.EffectiveHairId}] Hair",
-                    AssetData = new AssetData
-                    {
-                        MeshPaths = hairMeshes,
-                        TexturePaths = hairTextures,
-                        Motions = motionArr,
-                        Asb = hairAsb,
-                        Adb = hairAdb,
-                    }
+                    AssetData = new AssetData { RoleParts = hairDescriptors, Motions = motionArr }
                 };
                 node.Children.Add(hairContainer);
             }
-            else
-            {
-                hairContainer = node;
-            }
+            else hairContainer = node;
 
-            if (hairMeshes.Length > 1)
-                for (int i = 0; i < hairMeshes.Length; i++)
-                {
-                    if (string.IsNullOrEmpty(hairMeshes[i]) || hairMeshes[i].StartsWith('?')) continue;
-
+            if (hairDescriptors.Length > 1)
+                foreach (var part in hairDescriptors)
                     hairContainer.Children.Add(new AssetNode
                     {
                         Icon = "▫",
-                        Label = Path.GetFileNameWithoutExtension(hairMeshes[i]),
-                        AssetData = new AssetData
-                        {
-                            MeshPaths = [hairMeshes[i]],
-                            TexturePaths = [hairTextures[i]],
-                            Motions = motionArr,
-                            Asb = [hairAsb[i]],
-                            Adb = [hairAdb[i]],
-                        }
+                        Label = Path.GetFileNameWithoutExtension(part.MeshPath),
+                        AssetData = new AssetData { RoleParts = [part], Motions = motionArr }
                     });
-                }
         }
 
-        // ── Front effect section ──────────────────────────────────────────
+        // ── Front effect section ──
         if (hasFxF)
         {
             AssetNode fxfContainer;
@@ -1439,36 +1384,26 @@ public class WorkspaceViewModel : ViewModelBase
                 {
                     Icon = "✨",
                     Label = role.FEffect,
-                    AssetData = new AssetData
-                    {
-                        Effects = BuildEffectDescriptors(fxfMeshes, fxfTextures, fxfAsb, fxfAdb)
-                    }
+                    AssetData = new AssetData { Effects = BuildEffectDescriptors(fxfMeshes, fxfTextures, fxfAsb, fxfAdb) }
                 };
                 node.Children.Add(fxfContainer);
             }
-            else
-            {
-                fxfContainer = node;
-            }
+            else fxfContainer = node;
 
             if (fxfMeshes.Length > 1)
                 for (int i = 0; i < fxfMeshes.Length; i++)
                 {
                     if (fxfMeshes[i].StartsWith('?')) continue;
-
                     fxfContainer.Children.Add(new AssetNode
                     {
                         Icon = "▫",
                         Label = Path.GetFileNameWithoutExtension(fxfMeshes[i]),
-                        AssetData = new AssetData
-                        {
-                            Effects = BuildEffectDescriptors([fxfMeshes[i]], [fxfTextures[i]], [fxfAsb[i]], [fxfAdb[i]])
-                        }
+                        AssetData = new AssetData { Effects = BuildEffectDescriptors([fxfMeshes[i]], [fxfTextures[i]], [fxfAsb[i]], [fxfAdb[i]]) }
                     });
                 }
         }
 
-        // ── Back effect section ───────────────────────────────────────────
+        // ── Back effect section ──
         if (hasFxB)
         {
             AssetNode fxbContainer;
@@ -1478,31 +1413,21 @@ public class WorkspaceViewModel : ViewModelBase
                 {
                     Icon = "✨",
                     Label = role.BEffect,
-                    AssetData = new AssetData
-                    {
-                        Effects = BuildEffectDescriptors(fxbMeshes, fxbTextures, fxbAsb, fxbAdb)
-                    }
+                    AssetData = new AssetData { Effects = BuildEffectDescriptors(fxbMeshes, fxbTextures, fxbAsb, fxbAdb) }
                 };
                 node.Children.Add(fxbContainer);
             }
-            else
-            {
-                fxbContainer = node;
-            }
+            else fxbContainer = node;
 
             if (fxbMeshes.Length > 1)
                 for (int i = 0; i < fxbMeshes.Length; i++)
                 {
                     if (fxbMeshes[i].StartsWith('?')) continue;
-
                     fxbContainer.Children.Add(new AssetNode
                     {
                         Icon = "▫",
                         Label = Path.GetFileNameWithoutExtension(fxbMeshes[i]),
-                        AssetData = new AssetData
-                        {
-                            Effects = BuildEffectDescriptors([fxbMeshes[i]], [fxbTextures[i]], [fxbAsb[i]], [fxbAdb[i]])
-                        }
+                        AssetData = new AssetData { Effects = BuildEffectDescriptors([fxbMeshes[i]], [fxbTextures[i]], [fxbAsb[i]], [fxbAdb[i]]) }
                     });
                 }
         }
@@ -2163,13 +2088,41 @@ public class WorkspaceViewModel : ViewModelBase
     {
         if (node.AssetData is not { } data || _game == null) return;
 
-        // Pure-effect node: no mesh body, only effect slots.
-        if (data.MeshPaths.Length == 0 && data.Effects.Length > 0)
+        // 1. Role-based loading (multi-slot with PartDescriptors)
+        if (data.RoleParts != null && data.RoleParts.Length > 0)
+            LoadRoleParts(data);
+
+        // 2. Pure-effect node (no mesh body, only effect slots)
+        else if (data.MeshPaths.Length == 0 && data.Effects.Length > 0)
             LoadEffectNode(data);
+
+        // 3. Legacy flat mesh loading fallback (SimpleObjs etc)
         else
-            LoadParts(data);        // normal mesh (may also carry attached effects)
+            LoadParts(data);
 
         SelectFirstMotion(data);
+    }
+
+    // Add the routing method:
+    private void LoadRoleParts(AssetData data)
+    {
+        ModelPath = data.RoleParts.Length == 1 ? data.RoleParts[0].MeshPath : $"{data.RoleParts.Length} role parts";
+
+        try
+        {
+            _game!.LoadC3Role(data.RoleParts, motionPath: null); // motion applied separately in SelectFirstMotion
+
+            if (data.Effects.Length > 0)
+                _game!.BindEffects(data.Effects);
+
+            StatusMessage = data.RoleParts.Length == 1
+                ? $"Loaded Role Part: {Path.GetFileName(data.RoleParts[0].MeshPath)}"
+                : $"Loaded Role ({data.RoleParts.Length} slots)";
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Error: {ex.Message}";
+        }
     }
 
     /// <summary>
