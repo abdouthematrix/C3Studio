@@ -8,7 +8,9 @@ public class AssetNode
     /// <summary>Asset path resolvable via IAssetFileService. Null for category headers.</summary>
     public AssetData? AssetData { get; set; }
     /// <summary>True when the node has at least one resolvable asset path.</summary>
-    public bool IsLoadable => (AssetData?.MeshPaths.Length > 0 || AssetData?.Motions.Length > 0);
+    public bool IsLoadable => (AssetData?.MeshPaths.Length > 0
+                            || AssetData?.Motions.Length > 0
+                            || AssetData?.Effects.Length > 0);
 
     public List<AssetNode> Children { get; } = new();
 }

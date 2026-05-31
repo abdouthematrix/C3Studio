@@ -8,6 +8,7 @@ public sealed class C3Renderer : IDisposable
 {
     private readonly GraphicsDevice _gd;
     private C3Role? _role;
+    private C3Effect? _effect;
     private double _frameTimer;
     private double _secondsPerFrame = 1.0 / 30.0;
 
@@ -20,15 +21,25 @@ public sealed class C3Renderer : IDisposable
     }
 
     public C3Role? Role => _role;
+    public C3Effect? Effect => _effect;
 
-    // ── Frame state ───────────────────────────────────────────────────────
-    public int MaxFrameCount => _role?.MaxFrameCount ?? 0;
-    public int CurrentFrame => _role?.CurrentFrame ?? 0;
+    // ── Frame state (role takes priority; falls back to standalone effect) ─
+    public int MaxFrameCount => Math.Max(_role?.MaxFrameCount ?? 0, _effect?.MaxFrameCount ?? 0);
+    public int CurrentFrame => _role?.CurrentFrame ?? _effect?.CurrentFrame ?? 0;
 
-    // ── Mesh visibility (forwarded to role) ───────────────────────────────
-    public IEnumerable<string> GetPhyNames() => _role?.GetPhyNames() ?? Enumerable.Empty<string>();
-    public bool GetPhyVisibility(string name) => _role?.GetPhyVisibility(name) ?? true;
-    public void SetPhyVisibility(string name, bool visible) => _role?.SetPhyVisibility(name, visible);
+    // ── Mesh visibility (forwarded to role and/or effect) ─────────────────
+    public IEnumerable<string> GetPhyNames() =>
+        (_role?.GetPhyNames() ?? Enumerable.Empty<string>())
+        .Concat(_effect?.GetPhyNames() ?? Enumerable.Empty<string>());
+
+    public bool GetPhyVisibility(string name) =>
+        _role?.GetPhyVisibility(name) ?? _effect?.GetPhyVisibility(name) ?? true;
+
+    public void SetPhyVisibility(string name, bool visible)
+    {
+        _role?.SetPhyVisibility(name, visible);
+        _effect?.SetPhyVisibility(name, visible);
+    }
 
     public C3Renderer(GraphicsDevice gd) => _gd = gd;
 
@@ -57,6 +68,32 @@ public sealed class C3Renderer : IDisposable
         _role.UploadAllVertices();
     }
 
+    // ── Effect loading ────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Installs a standalone <see cref="C3Effect"/> (an Effect asset node with no
+    /// body mesh), primes GPU resources, and runs the first Calculate + upload cycle.
+    /// Any previously loaded role or effect is unloaded first.
+    /// </summary>
+    public void LoadEffect(C3Effect effect)
+    {
+        Unload();
+        _effect = effect;
+        _frameTimer = 0;
+
+        _effect.Calculate();
+        _effect.UpdateShapes();
+        _effect.Initialize(_gd);
+        _effect.UploadVertices();
+    }
+
+    /// <summary>Disposes and clears the standalone effect without touching the role.</summary>
+    public void UnloadEffect()
+    {
+        _effect?.Dispose();
+        _effect = null;
+    }
+
     // ── Motion swap ───────────────────────────────────────────────────────
 
     /// <summary>
@@ -81,21 +118,25 @@ public sealed class C3Renderer : IDisposable
     /// </summary>
     public void Update(GameTime gameTime)
     {
-        if (_role == null) return;
+        if (_role == null && _effect == null) return;
 
         if (IsPlaying)
         {
             _frameTimer += gameTime.ElapsedGameTime.TotalSeconds;
             while (_frameTimer >= _secondsPerFrame)
             {
-                _role.AdvanceFrame(1);
-                _role.Calculate();      // includes socket binding
-                _role.UpdateShapes();
+                _role?.AdvanceFrame(1);
+                _role?.Calculate();         // includes socket binding
+                _role?.UpdateShapes();
+                _effect?.AdvanceFrame(1);
+                _effect?.Calculate();
+                _effect?.UpdateShapes();
                 _frameTimer -= _secondsPerFrame;
             }
         }
 
-        _role.Update();                 // GPU upload (respects visibility flags)
+        _role?.Update();                    // GPU upload (respects visibility flags)
+        _effect?.Update();
     }
 
     // ── Draw ──────────────────────────────────────────────────────────────
@@ -103,6 +144,7 @@ public sealed class C3Renderer : IDisposable
     public void Draw(Matrix view, Matrix projection)
     {
         _role?.Draw(_gd, view, projection);
+        _effect?.Draw(_gd, view, projection);
     }
 
     // ── Frame stepping ────────────────────────────────────────────────────
@@ -110,20 +152,28 @@ public sealed class C3Renderer : IDisposable
     /// <summary>Advances or rewinds by <paramref name="delta"/> frames and force-uploads.</summary>
     public void StepFrame(int delta)
     {
-        if (_role == null) return;
-        _role.AdvanceFrame(delta);
-        _role.Calculate();
-        _role.UpdateShapes();
-        _role.UploadAllVertices();
+        if (_role == null && _effect == null) return;
+        _role?.AdvanceFrame(delta);
+        _role?.Calculate();
+        _role?.UpdateShapes();
+        _role?.UploadAllVertices();
+        _effect?.AdvanceFrame(delta);
+        _effect?.Calculate();
+        _effect?.UpdateShapes();
+        _effect?.UploadVertices();
     }
 
     public void ResetFrame()
     {
-        if (_role == null) return;
-        _role.SetFrame(0);
-        _role.Calculate();
-        _role.UpdateShapes();
-        _role.UploadAllVertices();
+        if (_role == null && _effect == null) return;
+        _role?.SetFrame(0);
+        _role?.Calculate();
+        _role?.UpdateShapes();
+        _role?.UploadAllVertices();
+        _effect?.SetFrame(0);
+        _effect?.Calculate();
+        _effect?.UpdateShapes();
+        _effect?.UploadVertices();
     }
 
     // ── Lifecycle ─────────────────────────────────────────────────────────
@@ -132,6 +182,7 @@ public sealed class C3Renderer : IDisposable
     {
         _role?.Dispose();
         _role = null;
+        UnloadEffect();
     }
 
     public void Dispose() => Unload();

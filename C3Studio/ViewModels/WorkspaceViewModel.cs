@@ -2,9 +2,13 @@ using C3Studio.Core.Models;
 using C3Studio.Core.Services;
 using C3Studio.MonoGame;
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Data;
 using System.IO;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using System.Windows.Forms;
 using System.Windows.Input;
 
@@ -486,10 +490,7 @@ public class WorkspaceViewModel : ViewModelBase
                     Label = npc.Effect,
                     AssetData = new AssetData
                     {
-                        MeshPaths = efxMeshes,
-                        TexturePaths = efxTextures,
-                        Asb = efxAsb,
-                        Adb = efxAdb,
+                        Effects = BuildEffectDescriptors(efxMeshes, efxTextures, efxAsb, efxAdb)
                     }
                 };
                 node.Children.Add(efxContainer);
@@ -510,10 +511,7 @@ public class WorkspaceViewModel : ViewModelBase
                         Label = Path.GetFileNameWithoutExtension(efxMeshes[i]),
                         AssetData = new AssetData
                         {
-                            MeshPaths = [efxMeshes[i]],
-                            TexturePaths = [efxTextures[i]],
-                            Asb = [efxAsb[i]],
-                            Adb = [efxAdb[i]],
+                            Effects = BuildEffectDescriptors([efxMeshes[i]], [efxTextures[i]], [efxAsb[i]], [efxAdb[i]])
                         }
                     });
                 }
@@ -608,10 +606,7 @@ public class WorkspaceViewModel : ViewModelBase
             AssetData = effect.Amount > 0
                 ? new AssetData
                 {
-                    MeshPaths = meshPaths,
-                    TexturePaths = texPaths,
-                    Asb = asbArr,
-                    Adb = adbArr,
+                    Effects = BuildEffectDescriptors(meshPaths, texPaths, asbArr, adbArr)
                 }
                 : null
         };
@@ -627,10 +622,7 @@ public class WorkspaceViewModel : ViewModelBase
                     Label = Path.GetFileNameWithoutExtension(meshPaths[i]),
                     AssetData = new AssetData
                     {
-                        MeshPaths = [meshPaths[i]],
-                        TexturePaths = [texPaths[i]],
-                        Asb = [asbArr[i]],
-                        Adb = [adbArr[i]],
+                        Effects = BuildEffectDescriptors([meshPaths[i]], [texPaths[i]], [asbArr[i]], [adbArr[i]])
                     }
                 });
             }
@@ -707,10 +699,7 @@ public class WorkspaceViewModel : ViewModelBase
             AssetData = baseMeshes.Length > 0
                 ? new AssetData
                 {
-                    MeshPaths = baseMeshes,
-                    TexturePaths = baseTextures,
-                    Asb = baseAsb,
-                    Adb = baseAdb,
+                    Effects = BuildEffectDescriptors(baseMeshes, baseTextures, baseAsb, baseAdb)
                 }
                 : null
         };
@@ -742,10 +731,7 @@ public class WorkspaceViewModel : ViewModelBase
                 AssetData = sMeshes.Length > 0
                     ? new AssetData
                     {
-                        MeshPaths = sMeshes,
-                        TexturePaths = sTextures,
-                        Asb = sAsb,
-                        Adb = sAdb,
+                        Effects = BuildEffectDescriptors(sMeshes, sTextures, sAsb, sAdb)
                     }
                     : null
             };
@@ -781,10 +767,7 @@ public class WorkspaceViewModel : ViewModelBase
                 AssetData = visuallyDistinct && lMeshes.Length > 0
                     ? new AssetData
                     {
-                        MeshPaths = lMeshes,
-                        TexturePaths = lTextures,
-                        Asb = lAsb,
-                        Adb = lAdb,
+                        Effects = BuildEffectDescriptors(lMeshes, lTextures, lAsb, lAdb)
                     }
                     : null
             };
@@ -847,10 +830,7 @@ public class WorkspaceViewModel : ViewModelBase
 
             var partData = new AssetData
             {
-                MeshPaths = meshes,
-                TexturePaths = textures,
-                Asb = asb,
-                Adb = adb,
+                Effects = BuildEffectDescriptors(meshes, textures, asb, adb)
             };
 
             parts.Add(($"{fieldLabel}: {key}", partData));
@@ -1461,10 +1441,7 @@ public class WorkspaceViewModel : ViewModelBase
                     Label = role.FEffect,
                     AssetData = new AssetData
                     {
-                        MeshPaths = fxfMeshes,
-                        TexturePaths = fxfTextures,
-                        Asb = fxfAsb,
-                        Adb = fxfAdb,
+                        Effects = BuildEffectDescriptors(fxfMeshes, fxfTextures, fxfAsb, fxfAdb)
                     }
                 };
                 node.Children.Add(fxfContainer);
@@ -1485,10 +1462,7 @@ public class WorkspaceViewModel : ViewModelBase
                         Label = Path.GetFileNameWithoutExtension(fxfMeshes[i]),
                         AssetData = new AssetData
                         {
-                            MeshPaths = [fxfMeshes[i]],
-                            TexturePaths = [fxfTextures[i]],
-                            Asb = [fxfAsb[i]],
-                            Adb = [fxfAdb[i]],
+                            Effects = BuildEffectDescriptors([fxfMeshes[i]], [fxfTextures[i]], [fxfAsb[i]], [fxfAdb[i]])
                         }
                     });
                 }
@@ -1506,10 +1480,7 @@ public class WorkspaceViewModel : ViewModelBase
                     Label = role.BEffect,
                     AssetData = new AssetData
                     {
-                        MeshPaths = fxbMeshes,
-                        TexturePaths = fxbTextures,
-                        Asb = fxbAsb,
-                        Adb = fxbAdb,
+                        Effects = BuildEffectDescriptors(fxbMeshes, fxbTextures, fxbAsb, fxbAdb)
                     }
                 };
                 node.Children.Add(fxbContainer);
@@ -1530,10 +1501,7 @@ public class WorkspaceViewModel : ViewModelBase
                         Label = Path.GetFileNameWithoutExtension(fxbMeshes[i]),
                         AssetData = new AssetData
                         {
-                            MeshPaths = [fxbMeshes[i]],
-                            TexturePaths = [fxbTextures[i]],
-                            Asb = [fxbAsb[i]],
-                            Adb = [fxbAdb[i]],
+                            Effects = BuildEffectDescriptors([fxbMeshes[i]], [fxbTextures[i]], [fxbAsb[i]], [fxbAdb[i]])
                         }
                     });
                 }
@@ -2195,8 +2163,36 @@ public class WorkspaceViewModel : ViewModelBase
     {
         if (node.AssetData is not { } data || _game == null) return;
 
-        LoadParts(data);
+        // Pure-effect node: no mesh body, only effect slots.
+        if (data.MeshPaths.Length == 0 && data.Effects.Length > 0)
+            LoadEffectNode(data);
+        else
+            LoadParts(data);        // normal mesh (may also carry attached effects)
+
         SelectFirstMotion(data);
+    }
+
+    /// <summary>
+    /// Handles an Effect asset node whose <see cref="AssetData.MeshPaths"/> is empty
+    /// but <see cref="AssetData.Effects"/> carries one or more slots.
+    /// All slots are forwarded to <see cref="C3StudioGame.LoadStandaloneEffect"/> so
+    /// they become a single multi-model <see cref="C3Effect"/> rendered directly by
+    /// the renderer — no body part required.
+    /// </summary>
+    private void LoadEffectNode(AssetData data)
+    {
+        try
+        {
+            _game!.LoadStandaloneEffect(data.Effects);
+
+            StatusMessage = data.Effects.Length == 1
+                ? $"Effect: {Path.GetFileName(data.Effects[0].MeshPath)}"
+                : $"Effect ({data.Effects.Length} parts)";
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Error: {ex.Message}";
+        }
     }
 
     /// <summary>

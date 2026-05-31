@@ -217,6 +217,33 @@ public class C3StudioGame : WpfGame
         }
     }
 
+    /// <summary>
+    /// Loads an Effect asset node as a standalone <see cref="C3Effect"/> directly
+    /// into the renderer — no body mesh required.  Any previously loaded role or
+    /// effect is unloaded first.  Use this when <see cref="AssetData.Effects"/> is
+    /// populated but <see cref="AssetData.MeshPaths"/> is empty.
+    /// </summary>
+    public void LoadStandaloneEffect(IEnumerable<EffectDescriptor> descriptors)
+    {
+        if (_renderer == null || _loader == null) return;
+        try
+        {
+            _renderer.Unload();
+
+            var effect = _loader.LoadEffect(descriptors, slotName: "Effect");
+            if (effect == null) return;
+
+            // LoadEffect primes Calculate / Initialize / UploadVertices internally.
+            _renderer.LoadEffect(effect);
+            ModelLoaded?.Invoke();
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine(
+                $"[C3StudioGame] LoadStandaloneEffect: {ex.Message}");
+        }
+    }
+
     // ── Camera input ──────────────────────────────────────────────────────
     private void HandleCamera()
     {
