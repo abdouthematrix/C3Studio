@@ -24,7 +24,7 @@ public class PtclFrame
 /// </summary>
 public class C3Ptcl : IDisposable
 {
-    public int PartIndex = -1;
+    
 
     // D3D blend factors: 5=SrcAlpha, 6=InvSrcAlpha (standard AlphaBlend).
     // Defaulting to 5/2 (Soft Additive) for particles since Conquer effects

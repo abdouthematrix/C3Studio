@@ -1,114 +1,138 @@
 using System.IO;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
-using C3Studio.Infrastructure.C3Format;
 
 namespace C3Studio.Infrastructure.Rendering;
 
-/// <summary>
-/// Renders all C3 chunk types in correct order:
-///   SCEN → PHY (opaque) → PHY (alpha) → PTCL → SHAP.
-///
-/// GPU lifecycle is fully delegated to the individual chunk classes:
-///   • <see cref="C3Phy"/>   owns its DynamicVertexBuffer, IndexBuffer, and both effects.
-///   • <see cref="C3Ptcl"/>  owns its AlphaTestEffect (created lazily on first Draw).
-///   • <see cref="C3Scene"/> owns its VertexBuffer, IndexBuffer, and AlphaTestEffect.
-///   • <see cref="C3Shape"/> owns its AlphaTestEffect (created lazily on first Draw).
-///
-/// Blend-state mapping is centralised in <see cref="C3BlendHelper"/>.
-///
-/// Equipment slots are filtered here (renderer policy), not inside the chunk classes.
-/// Culling is also determined per-PHY by <see cref="C3Phy.DrawNormal"/> /
-/// <see cref="C3Phy.DrawAlpha"/> based on the TwoSided flag.
-/// </summary>
-public class C3Renderer : IDisposable
+public sealed class C3Renderer : IDisposable
 {
     private readonly GraphicsDevice _gd;
-    private C3Model? _model;
+    private C3Role? _role;
     private double _frameTimer;
     private double _secondsPerFrame = 1.0 / 30.0;
 
-    public IEnumerable<string> GetPhyNames() => _model.GetPhyNames();
-    public bool GetPhyVisibility(string name) => _model.GetPhyVisibility(name);
-    public void SetPhyVisibility(string name, bool visible) => _model.SetPhyVisibility(name, visible);
-    // ─────────────────────────────────────────────────────────────────────
     public bool IsPlaying { get; set; } = true;
+
     public float Fps
     {
         get => (float)(1.0 / _secondsPerFrame);
         set => _secondsPerFrame = value > 0 ? 1.0 / value : 1.0 / 30.0;
     }
-    public C3Model? Model => _model;
 
-    public C3Renderer(GraphicsDevice gd) { _gd = gd; }
+    public C3Role? Role => _role;
 
-    // ── Model loading ─────────────────────────────────────────────────────    
-    public void LoadModelDirect(C3Model model)
-    {        
-        _model = model;
-        _model.Calculate();
-        _model.Initialize(_gd);
+    // ── Frame state ───────────────────────────────────────────────────────
+    public int MaxFrameCount => _role?.MaxFrameCount ?? 0;
+    public int CurrentFrame => _role?.CurrentFrame ?? 0;
+
+    // ── Mesh visibility (forwarded to role) ───────────────────────────────
+    public IEnumerable<string> GetPhyNames() => _role?.GetPhyNames() ?? Enumerable.Empty<string>();
+    public bool GetPhyVisibility(string name) => _role?.GetPhyVisibility(name) ?? true;
+    public void SetPhyVisibility(string name, bool visible) => _role?.SetPhyVisibility(name, visible);
+
+    public C3Renderer(GraphicsDevice gd) => _gd = gd;
+
+    // ── Role loading ──────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Installs a new <see cref="C3Role"/>, initialises GPU resources for every
+    /// part, and runs the first Calculate + upload cycle before the first Draw.
+    ///
+    /// Mirrors the old <c>C3Renderer.LoadModelDirect</c> sequence:
+    ///   Calculate → Initialize(_gd) → Update
+    /// applied once per <see cref="C3RolePart"/> in the role.
+    /// </summary>
+    public void LoadRole(C3Role role)
+    {
+        Unload();
+        _role = role;
+        _frameTimer = 0;
+
+        // Prime skinning: socket binding runs inside Calculate so bone positions
+        // are valid before Initialize uploads the first vertex batch.
+        _role.Calculate();
+        _role.UpdateShapes();
+        _role.Initialize(_gd);
+        // Upload OutputVertices that Calculate just produced.
+        _role.UploadAllVertices();
     }
-    
-    // ── Motion ────────────────────────────────────────────────────────────  
+
+    // ── Motion swap ───────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Replaces the Body (and BodyExtras) animation.
+    /// Resets the frame timer so the new motion begins from frame 0.
+    /// </summary>
     public void ChangeMotion(Stream stream)
     {
-        if (_model == null) return;
+        if (_role == null) return;
         _frameTimer = 0;
-        _model.ChangeMotion(stream);
-        _model.Calculate();
-        _model.UploadAllPhyVertices();
+        _role.ChangeMotion(stream);
+        _role.Calculate();
+        _role.UpdateShapes();
+        _role.UploadAllVertices();
     }
 
     // ── Update ────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Advances animation by as many frames as elapsed time warrants,
+    /// runs socket-binding Calculate, then uploads dirty vertices to the GPU.
+    /// </summary>
     public void Update(GameTime gameTime)
     {
-        if (_model == null) return;
+        if (_role == null) return;
+
         if (IsPlaying)
         {
             _frameTimer += gameTime.ElapsedGameTime.TotalSeconds;
             while (_frameTimer >= _secondsPerFrame)
             {
-                _model.AdvanceFrame(1);
-                _model.Calculate();
-                _model.UpdateShapes();
+                _role.AdvanceFrame(1);
+                _role.Calculate();      // includes socket binding
+                _role.UpdateShapes();
                 _frameTimer -= _secondsPerFrame;
             }
         }
-        _model.Update();
+
+        _role.Update();                 // GPU upload (respects visibility flags)
     }
 
     // ── Draw ──────────────────────────────────────────────────────────────
+
     public void Draw(Matrix view, Matrix projection)
     {
-        if (_model == null) return;        
-        _model.Draw(_gd, view, projection);        
+        _role?.Draw(_gd, view, projection);
     }
-    // ── Frame control ─────────────────────────────────────────────────────
+
+    // ── Frame stepping ────────────────────────────────────────────────────
+
+    /// <summary>Advances or rewinds by <paramref name="delta"/> frames and force-uploads.</summary>
     public void StepFrame(int delta)
     {
-        if (_model == null) return;
-        _model.AdvanceFrame(delta);
-        _model.Calculate();
-        _model.UpdateShapes();
-        _model.UploadAllPhyVertices();
+        if (_role == null) return;
+        _role.AdvanceFrame(delta);
+        _role.Calculate();
+        _role.UpdateShapes();
+        _role.UploadAllVertices();
     }
 
     public void ResetFrame()
     {
-        if (_model == null) return;
-        _model.SetFrame(0);
-        _model.Calculate();
-        _model.UploadAllPhyVertices();
+        if (_role == null) return;
+        _role.SetFrame(0);
+        _role.Calculate();
+        _role.UpdateShapes();
+        _role.UploadAllVertices();
     }
+
+    // ── Lifecycle ─────────────────────────────────────────────────────────
+
     public void Unload()
     {
-        if (_model != null)
-        {
-            _model.Unload();           
-            _model = null;
-        }
+        _role?.Dispose();
+        _role = null;
     }
-    // ── IDisposable ───────────────────────────────────────────────────────
+
     public void Dispose() => Unload();
 }

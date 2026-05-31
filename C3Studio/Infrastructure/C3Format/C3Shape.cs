@@ -7,10 +7,10 @@ namespace C3Studio.Infrastructure.C3Format;
 
 public class C3SMotion
 {
-    public int PartIndex = -1;
+    
     public Matrix[]? Frames { get; set; }
     public int CurrentFrame { get; set; }
-    public Matrix LocalMatrix { get; set; } = Matrix.Identity;
+    public Matrix Matrix { get; set; } = Matrix.Identity;
     public int FrameCount => Frames?.Length ?? 0;
 
     public static C3SMotion Load(BinaryReader br)
@@ -26,8 +26,8 @@ public class C3SMotion
     { if (FrameCount > 0) CurrentFrame = (CurrentFrame + step) % FrameCount; }
 
     public void SetFrame(int frame) { CurrentFrame = frame; }
-    public void ClearMatrix() { LocalMatrix = Matrix.Identity; }
-    public void Multiply(Matrix m) { LocalMatrix = LocalMatrix * m; }
+    public void ClearMatrix() { Matrix = Matrix.Identity; }
+    public void Multiply(Matrix m) { Matrix = Matrix * m; }
 
     /// <summary>
     /// Returns the world-space matrix for the current frame.
@@ -38,7 +38,7 @@ public class C3SMotion
     {
         if (Frames == null || Frames.Length == 0) return Matrix.Identity;
         Matrix fm = Frames[Math.Clamp(CurrentFrame, 0, Frames.Length - 1)];
-        return applyLocal ? fm * LocalMatrix : fm;
+        return applyLocal ? fm * Matrix : fm;
     }
 }
 
@@ -63,7 +63,7 @@ public struct ShapeOutVertex
 /// </summary>
 public class C3Shape : IDisposable
 {
-    public int PartIndex = -1;
+    
 
     // D3D blend factors: 5=SrcAlpha, 6=InvSrcAlpha (standard AlphaBlend).
     public int BlendAsb { get; set; } = 5;
@@ -204,7 +204,7 @@ public class C3Shape : IDisposable
 
         _effect.View = view;
         _effect.Projection = projection;
-        _effect.World = bLocal ? (Motion?.LocalMatrix ?? world) : world;
+        _effect.World = bLocal ? (Motion?.Matrix ?? world) : world;
         _effect.Texture = tex;
         _effect.VertexColorEnabled = true;
 

@@ -50,8 +50,6 @@ public class PhyOutVertex
 /// </summary>
 public class C3Phy : IDisposable
 {
-    public int PartIndex = -1;
-
     // ── Identity / material ───────────────────────────────────────────────
     public string Name { get; set; } = string.Empty;
     public string TexName { get; set; } = string.Empty;

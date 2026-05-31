@@ -215,27 +215,15 @@ public partial class C3Model
     }
     public void BindPhyMotions()
     {
-        for (int i = 0; i < Phys.Count; i++)
-        {
-            if (i < Motions.Count)
-            {
-                Phys[i].Motion = Motions[i];
-                if (Phys[i].Motion != null)
-                    Phys[i].Motion.PartIndex = Phys[i].PartIndex;
-            }
-        }
+        for (int i = 0; i < Phys.Count; i++)        
+            if (i < Motions.Count)            
+                Phys[i].Motion = Motions[i]; 
     }
     public void BindShapeMotions()
     {
-        for (int i = 0; i < Shapes.Count; i++)
-        {
-            if (i < SMotions.Count)
-            {
-                Shapes[i].Motion = SMotions[i];
-                if (Shapes[i].Motion != null)
-                    Shapes[i].Motion.PartIndex = Shapes[i].PartIndex;
-            }           
-        }
+        for (int i = 0; i < Shapes.Count; i++)        
+            if (i < SMotions.Count)            
+                Shapes[i].Motion = SMotions[i]; 
     }
     public C3Phy? FindPhy(string name) =>
         Phys.Find(p => string.Equals(p.Name, name, StringComparison.OrdinalIgnoreCase));
@@ -305,11 +293,7 @@ public partial class C3Model
             if (src.Motions.Count == 0) return;
 
             for (int i = 0; i < Motions.Count; i++)
-            {
-                if (Motions[i].PartIndex == index)
-                    Motions[i] = src.Motions[i];
-            }
-
+                Motions[i] = src.Motions[i];
         }
         this.BindPhyMotions();
     }    

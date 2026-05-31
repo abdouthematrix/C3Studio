@@ -13,7 +13,7 @@ public class C3KeyFrame
 /// <summary>Animation track. Supports KKEY / ZKEY / XKEY / Legacy on-disk formats.</summary>
 public class C3Motion
 {
-    public int PartIndex = -1;
+    
     public int BoneCount    { get; set; }
     public int FrameCount   { get; set; }
     public int CurrentFrame { get; set; }

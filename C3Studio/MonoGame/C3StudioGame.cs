@@ -1,3 +1,4 @@
+using C3Studio.Core.Models;
 using C3Studio.Core.Services;
 using C3Studio.Infrastructure.C3Format;
 using C3Studio.Infrastructure.Loading;
@@ -11,11 +12,6 @@ using MonoGame.Framework.WpfInterop.Input;
 
 namespace C3Studio.MonoGame;
 
-/// <summary>
-/// MonoGame WpfInterop game host.
-/// Responsibilities: XNA lifecycle, camera input, grid rendering, playback control.
-/// Asset loading is fully delegated to <see cref="C3AssetLoader"/>.
-/// </summary>
 public class C3StudioGame : WpfGame
 {
     // ── DI / services ─────────────────────────────────────────────────────
@@ -28,15 +24,20 @@ public class C3StudioGame : WpfGame
 
     // ── Events ────────────────────────────────────────────────────────────
     public event Action<int, int>? FrameChanged;
-
-
     public event Action? ModelLoaded;
-    public IEnumerable<string> GetMeshNames() => _renderer?.GetPhyNames() ?? Array.Empty<string>();
+
+    // ── Mesh visibility (forwarded through renderer → role) ───────────────
+    public IEnumerable<string> GetMeshNames() => _renderer?.GetPhyNames() ?? [];
     public bool GetMeshVisibility(string name) => _renderer?.GetPhyVisibility(name) ?? true;
     public void SetMeshVisibility(string name, bool visible) => _renderer?.SetPhyVisibility(name, visible);
 
     // ── Playback ──────────────────────────────────────────────────────────
-    public bool IsPlaying { get; set; } = true;
+    public bool IsPlaying
+    {
+        get => _renderer?.IsPlaying ?? true;
+        set { if (_renderer != null) _renderer.IsPlaying = value; }
+    }
+
     public void SetFps(float fps) { if (_renderer != null) _renderer.Fps = fps; }
     public void StepFrame(int delta) => _renderer?.StepFrame(delta);
     public void ResetCamera() => _camera.Reset();
@@ -56,7 +57,7 @@ public class C3StudioGame : WpfGame
     // ── Grid ──────────────────────────────────────────────────────────────
     private VertexPositionColor[]? _gridVerts;
 
-    // ── Init ──────────────────────────────────────────────────────────────
+    // ── XNA init ──────────────────────────────────────────────────────────
     protected override void Initialize()
     {
         _gdService = new WpfGraphicsDeviceService(this);
@@ -86,30 +87,8 @@ public class C3StudioGame : WpfGame
 
         if (_renderer != null)
         {
-            if (IsPlaying) _renderer.Update(gameTime);
-
-            int total = _renderer.Model?.MaxFrameCount ?? 0;
-            int current = 0;
-            var model = _renderer.Model;
-            if (model != null)
-            {
-                // Prefer physics motions
-                if (model.Motions.Count > 0)
-                    current = model.Motions[0].CurrentFrame;
-
-                // Otherwise check shape motions
-                else if (model.Shapes.Count > 0 && model.Shapes[0].Motion != null)
-                    current = model.Shapes[0].Motion!.CurrentFrame;
-
-                // Otherwise check particles
-                else if (model.Ptcls.Count > 0)
-                    current = model.Ptcls[0].CurrentFrame;
-
-                // Otherwise check scenes
-                else if (model.Scenes.Count > 0)
-                    current = model.Scenes[0].CurrentFrame;
-            }
-            FrameChanged?.Invoke(current, total);
+            _renderer.Update(gameTime);     // no-ops internally when !IsPlaying
+            FrameChanged?.Invoke(_renderer.CurrentFrame, _renderer.MaxFrameCount);
         }
 
         base.Update(gameTime);
@@ -131,12 +110,7 @@ public class C3StudioGame : WpfGame
         base.Draw(gameTime);
     }
 
-    // ── Public loading API ────────────────────────────────────────────────
-
-    /// <summary>
-    /// Loads and merges multiple (mesh, texture, asb, adb) tuples into one model.
-    /// Used for multi-part NPCs / SimpleObjs / equipment that carry per-slot blend info.
-    /// </summary>
+    // ── Public loading API ────────────────────────────────────────────────    
     public void LoadC3Parts(
         IEnumerable<(string MeshPath, string? TexturePath, int Asb, int Adb)> parts,
         string? motionPath = null)
@@ -145,14 +119,16 @@ public class C3StudioGame : WpfGame
         try
         {
             _renderer.Unload();
-            var (model, partCount) = _loader.LoadAndMerge(parts);
-            if (model == null) return;
+
+            var role = _loader.LoadRole(parts);
+            if (role == null) return;
+
+            _renderer.LoadRole(role);
 
             if (!string.IsNullOrEmpty(motionPath))
                 ChangeMotion(motionPath);
 
-            _renderer.LoadModelDirect(model);
-            AutoFitCamera(model);
+            AutoFitCamera(role);
             ModelLoaded?.Invoke();
         }
         catch (Exception ex)
@@ -160,22 +136,84 @@ public class C3StudioGame : WpfGame
             System.Diagnostics.Debug.WriteLine($"[C3StudioGame] LoadC3Parts: {ex.Message}");
         }
     }
-    /// <summary>Swaps the animation on the current model.</summary>
-    public void ChangeMotion(string relativePath)
+
+    public void LoadC3Role(
+        IEnumerable<PartDescriptor> slots,
+        string? motionPath = null)
     {
         if (_renderer == null || _loader == null) return;
         try
         {
-            if (_assetService != null)
-            {
-                using var stream = _assetService.Open(relativePath);
-                _renderer.ChangeMotion(stream);
-            }            
+            _renderer.Unload();
+
+            var role = _loader.LoadRole(slots);
+            if (role == null) return;
+
+            _renderer.LoadRole(role);
+
+            if (!string.IsNullOrEmpty(motionPath))
+                ChangeMotion(motionPath);
+
+            AutoFitCamera(role);
+            ModelLoaded?.Invoke();
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[C3StudioGame] LoadC3Role: {ex.Message}");
+        }
+    }
+    public void ChangeMotion(string relativePath)
+    {
+        if (_renderer == null || _assetService == null) return;
+        try
+        {
+            using var stream = _assetService.Open(relativePath);
+            _renderer.ChangeMotion(stream);
         }
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine(
                 $"[C3StudioGame] ChangeMotion '{relativePath}': {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Loads all <see cref="EffectDescriptor"/> slots as a single multi-model
+    /// <see cref="C3Effect"/> and attaches it to the Body part's
+    /// <see cref="C3RolePart.Effects"/> list, replacing any previously bound effects.
+    ///
+    /// All descriptors are passed to <see cref="C3AssetLoader.LoadEffect(IEnumerable{EffectDescriptor},string)"/>
+    /// so that an effect with several .c3 slots (Amount &gt; 1) becomes one
+    /// <see cref="C3Effect"/> containing multiple <see cref="C3Model"/> instances.
+    /// </summary>
+    public void BindEffects(IEnumerable<EffectDescriptor> effects)
+    {
+        if (_renderer?.Role?.Body == null || _loader == null) return;
+        var body = _renderer.Role.Body;
+
+        // Dispose and clear any previously attached effects.
+        foreach (var old in body.Effects) old.Dispose();
+        body.Effects.Clear();
+
+        var descriptors = effects.ToList();
+        if (descriptors.Count == 0) return;
+
+        try
+        {
+            var effect = _loader.LoadEffect(descriptors, slotName: "Effect");
+            if (effect == null) return;
+
+            // Prime skinning and upload initial vertices before first Draw.
+            effect.Calculate();
+            effect.Initialize(GraphicsDevice);
+            effect.UploadVertices();
+
+            body.Effects.Add(effect);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine(
+                $"[C3StudioGame] BindEffects: {ex.Message}");
         }
     }
 
@@ -240,22 +278,36 @@ public class C3StudioGame : WpfGame
     }
 
     // ── Camera auto-fit ───────────────────────────────────────────────────
-    private void AutoFitCamera(C3Model model)
+    private void AutoFitCamera(C3Role role)
     {
         var min = new Vector3(float.MaxValue);
         var max = new Vector3(float.MinValue);
         bool any = false;
 
-        foreach (var phy in model.Phys)
+        foreach (var part in role.AllParts())
         {
-            if (phy.PartIndex != 0) continue;
-            if (phy.OutputVertices.Count == 0) continue;
-            foreach (var v in phy.OutputVertices)
+            // Only use the Body-like parts for bounding (skip attachment accessories)
+            if (part.SlotName != "Body" && !part.SlotName.StartsWith("BodyExtra")) continue;
+
+            foreach (var phy in part.Model.Phys)
             {
-                min = Vector3.Min(min, v.Position);
-                max = Vector3.Max(max, v.Position);
-                any = true;
+                if (phy.OutputVertices.Count == 0) continue;
+                foreach (var v in phy.OutputVertices)
+                {
+                    min = Vector3.Min(min, v.Position);
+                    max = Vector3.Max(max, v.Position);
+                    any = true;
+                }
             }
+        }
+
+        // Fallback: fit to any part if no body vertices found
+        if (!any)
+        {
+            foreach (var part in role.AllParts())
+                foreach (var phy in part.Model.Phys)
+                    foreach (var v in phy.OutputVertices)
+                    { min = Vector3.Min(min, v.Position); max = Vector3.Max(max, v.Position); any = true; }
         }
 
         if (!any) { _camera.Reset(); return; }
@@ -263,7 +315,6 @@ public class C3StudioGame : WpfGame
         var center = (min + max) * 0.5f;
         float diagonal = Vector3.Distance(min, max);
         float orbit = Math.Clamp(diagonal * 1.5f, 40f, 800f);
-
         _camera.FitTo(center, orbit);
     }
 

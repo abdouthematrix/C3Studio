@@ -15,11 +15,26 @@ public class AssetNode
 
 public sealed record MotionData(string Label, string Path);
 
+/// <summary>
+/// A single effect mesh/texture slot that is rendered as a <see cref="C3Effect"/>
+/// attached to the body <see cref="C3RolePart"/> rather than loaded as a body mesh.
+/// </summary>
+public sealed record EffectDescriptor(
+    string MeshPath,
+    string? TexturePath,
+    int Asb = 5,
+    int Adb = 6);
+
 public sealed class AssetData
 {
     public string[] MeshPaths { get; init; } = [];
     public string[] TexturePaths { get; init; } = [];
     public MotionData[] Motions { get; init; } = [];
+    /// <summary>
+    /// Effect models that are attached to the body part's
+    /// <c>Effects</c> list rather than merged into its mesh pool.
+    /// </summary>
+    public EffectDescriptor[] Effects { get; init; } = [];
 
     /// <summary>
     /// Per-part D3D source-blend factor (index matches <see cref="MeshPaths"/>).

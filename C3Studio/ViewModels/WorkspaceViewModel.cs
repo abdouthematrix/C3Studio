@@ -403,22 +403,20 @@ public class WorkspaceViewModel : ViewModelBase
             (efxMeshes, efxTextures, efxAsb, efxAdb) = BuildEffectParts(npc.Effect);
 
         // ── Root node — loads everything combined ─────────────────────────
-        var allMeshes = objMeshes.Concat(efxMeshes).ToArray();
-        var allTextures = objTextures.Concat(efxTextures).ToArray();
-        var allAsb = objAsb.Concat(efxAsb).ToArray();
-        var allAdb = objAdb.Concat(efxAdb).ToArray();
+        var efxDescriptors = BuildEffectDescriptors(efxMeshes, efxTextures, efxAsb, efxAdb);
 
         var node = new AssetNode { Icon = "⚔", Label = $"[{npc.NpcType}] {npc.Name}" };
 
-        if (allMeshes.Length > 0 || motions.Length > 0)
+        if (objMeshes.Length > 0 || motions.Length > 0 || efxDescriptors.Length > 0)
         {
             node.AssetData = new AssetData
             {
-                MeshPaths = allMeshes,
-                TexturePaths = allTextures,
+                MeshPaths = objMeshes,
+                TexturePaths = objTextures,
                 Motions = motions,
-                Asb = allAsb,
-                Adb = allAdb,
+                Asb = objAsb,
+                Adb = objAdb,
+                Effects = efxDescriptors,
             };
         }
 
@@ -1189,13 +1187,13 @@ public class WorkspaceViewModel : ViewModelBase
         LoveStroll_SitDown = 477,
         LoveStroll_Sit2 = 478,
         LoveStroll_StandUp = 479,
-        
+
         Challenge = 480,
         Enligtened = 481,
         Kicked = 482,
         RiseUp = 483,
 
-        
+
         Fly_StandBy = 501,
         Fly_Alert = 502,
 
@@ -1310,11 +1308,17 @@ public class WorkspaceViewModel : ViewModelBase
         if (!string.IsNullOrEmpty(role.BEffect))
             (fxbMeshes, fxbTextures, fxbAsb, fxbAdb) = BuildEffectParts(role.BEffect);
 
-        // ── Combine all sections for the root AssetData ───────────────────
-        var allMeshes = bodyMeshes.Concat(hairMeshes).Concat(fxfMeshes).Concat(fxbMeshes).ToArray();
-        var allTextures = bodyTextures.Concat(hairTextures).Concat(fxfTextures).Concat(fxbTextures).ToArray();
-        var allAsb = bodyAsb.Concat(hairAsb).Concat(fxfAsb).Concat(fxbAsb).ToArray();
-        var allAdb = bodyAdb.Concat(hairAdb).Concat(fxfAdb).Concat(fxbAdb).ToArray();
+        // ── Combine body+hair for MeshPaths; effects go into Effects ─────
+        var fxDescriptors = BuildEffectDescriptors(
+            fxfMeshes.Concat(fxbMeshes).ToArray(),
+            fxfTextures.Concat(fxbTextures).ToArray(),
+            fxfAsb.Concat(fxbAsb).ToArray(),
+            fxfAdb.Concat(fxbAdb).ToArray());
+
+        var allMeshes = bodyMeshes.Concat(hairMeshes).ToArray();
+        var allTextures = bodyTextures.Concat(hairTextures).ToArray();
+        var allAsb = bodyAsb.Concat(hairAsb).ToArray();
+        var allAdb = bodyAdb.Concat(hairAdb).ToArray();
         var motionArr = motions.ToArray();
 
         var node = new AssetNode
@@ -1323,7 +1327,7 @@ public class WorkspaceViewModel : ViewModelBase
             Label = role.Key,
         };
 
-        if (allMeshes.Length > 0 || motionArr.Length > 0)
+        if (allMeshes.Length > 0 || motionArr.Length > 0 || fxDescriptors.Length > 0)
         {
             node.AssetData = new AssetData
             {
@@ -1332,6 +1336,7 @@ public class WorkspaceViewModel : ViewModelBase
                 Motions = motionArr,
                 Asb = allAsb,
                 Adb = allAdb,
+                Effects = fxDescriptors,
             };
         }
 
@@ -1675,7 +1680,7 @@ public class WorkspaceViewModel : ViewModelBase
                 RoleActionType action = (RoleActionType)i;
                 TryAddHeadMotion(motions, action.ToString(), part.Id, i);
             }
-        }            
+        }
         else if (part.PartType == RolePartType.Weapon)
         {
             // WeaponMotion.ini — uses ResolveWeaponMotion (category + wildcard fallback)
@@ -1712,7 +1717,7 @@ public class WorkspaceViewModel : ViewModelBase
                 RoleActionType action = (RoleActionType)i;
                 TryAddPelvisMotion(motions, action.ToString(), part.Id, i);
             }
-        }       
+        }
         else if (part.PartType == RolePartType.Spirit)
         {
             for (int i = 0; i < 999; i++)
@@ -1935,6 +1940,26 @@ public class WorkspaceViewModel : ViewModelBase
     // ── Mesh-array helpers ────────────────────────────────────────────────
     // All helpers return (Paths, Textures, Asb, Adb) so blend state flows
     // from every type's ini data through AssetData into the renderer.
+
+    /// <summary>
+    /// Converts parallel effect arrays into an <see cref="EffectDescriptor"/> array,
+    /// skipping slots whose mesh path is empty or starts with '?' (unresolvable).
+    /// </summary>
+    private static EffectDescriptor[] BuildEffectDescriptors(
+        string[] meshes, string[] textures, int[] asb, int[] adb)
+    {
+        var result = new List<EffectDescriptor>(meshes.Length);
+        for (int i = 0; i < meshes.Length; i++)
+        {
+            if (string.IsNullOrEmpty(meshes[i]) || meshes[i].StartsWith('?')) continue;
+            result.Add(new EffectDescriptor(
+                meshes[i],
+                i < textures.Length ? textures[i] : null,
+                i < asb.Length ? asb[i] : 5,
+                i < adb.Length ? adb[i] : 6));
+        }
+        return result.ToArray();
+    }
 
     /// <summary>SimpleObj has no Asb/Adb — fills arrays with the supplied defaults (or 5/6).</summary>
     private (string[] Paths, string[] Textures, int[] Asb, int[] Adb) BuildMeshArrays(
@@ -2200,6 +2225,11 @@ public class WorkspaceViewModel : ViewModelBase
         try
         {
             _game!.LoadC3Parts(parts, motionPath: null); // motion applied separately
+
+            // Bind effect models onto the body part's Effects list.
+            if (data.Effects.Length > 0)
+                _game!.BindEffects(data.Effects);
+
             StatusMessage = data.MeshPaths.Length == 1
                 ? $"Loaded: {Path.GetFileName(data.MeshPaths[0])}"
                 : $"Loaded {data.MeshPaths.Length} parts";
