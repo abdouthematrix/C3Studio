@@ -242,23 +242,28 @@ public partial class C3Model
             Phys == null ||
             Phys.Count == 0)        
             return;
-        
-        var targetPhy = Phys.FirstOrDefault();
-        if (targetPhy == null ||
-            targetPhy?.Motion == null)        
-            return;
-        // Cache the motion reference to avoid nested pointer-chasing in the loop
-        var targetMotion = targetPhy.Motion;
-        var dwBoneCount = targetMotion.BoneCount;
 
-        // 2. Bone Matrix Transformation Loop
-        for (int n = 0; n < dwBoneCount; n++)
-        {            
-            var mm = pMotion.GetBoneMatrix(0);
-           
-            targetMotion.BoneMatrix[n] = mm;
-            targetMotion.BoneMatrix[n] *= pMotion.BoneMatrix[0];
+        foreach (var targetPhy in Phys)
+        {
+            //var targetPhy = Phys.FirstOrDefault(x => x.Name == "v_body");
+            if (targetPhy == null ||
+                targetPhy?.Motion == null)
+                continue;
+                //return;
+            // Cache the motion reference to avoid nested pointer-chasing in the loop
+            var targetMotion = targetPhy.Motion;
+            var dwBoneCount = targetMotion.BoneCount;
+
+            // 2. Bone Matrix Transformation Loop
+            for (int n = 0; n < dwBoneCount; n++)
+            {
+                var mm = pMotion.GetBoneMatrix(0);
+
+                targetMotion.BoneMatrix[n] = mm;
+                targetMotion.BoneMatrix[n] *= pMotion.BoneMatrix[0];
+            }
         }
+        
 
         //// 3. Update Position Coords for all Mesh Parts
         //uint dwPhyNum = m_infoPart.p3DMesh.m_dwPhyNum;

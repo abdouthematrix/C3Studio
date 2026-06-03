@@ -19,7 +19,9 @@ public class RolePart
 
     public uint Id { get; set; }
     public RolePartType PartType { get; set; }
+
     public int Look => (int)(Id / 1_000_000);
+
     public int SubType
     {
         get
@@ -27,15 +29,33 @@ public class RolePart
             switch (PartType)
             {
                 case RolePartType.Mount:
-                    return (int)(Id / 10000);                                
                 case RolePartType.Spirit:
                     return (int)(Id / 10000);
                 default:
                     return (int)((Id % 1_000_000) / 1_000);
-            }            
+            }
         }
     }
-    public int Level => (int)(Id % 100);
+
+    // ── Updated Level Parsing ──────────────────────────────────────────────
+    public int Level
+    {
+        get
+        {
+            // Check if the item is a shield (Conquer Online shields typically start with 900)
+            bool isShield = PartType == RolePartType.Weapon && (Id / 1000 == 900);
+
+            if (PartType == RolePartType.Armor || PartType == RolePartType.Head || PartType == RolePartType.Armet || isShield)
+            {
+                return (int)((Id % 100) / 10);
+            }
+            else
+            {
+                return (int)((Id % 1000) / 10);
+            }
+        }
+    }
+
     public int Parts { get; set; }
 
     public uint[] MeshIds { get; init; } = new uint[MaxParts];

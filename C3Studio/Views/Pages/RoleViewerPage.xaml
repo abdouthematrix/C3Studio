@@ -2,18 +2,69 @@
     x:Class="C3Studio.Views.Pages.RoleViewerPage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:models="clr-namespace:C3Studio.Core.Models"
     xmlns:vm="clr-namespace:C3Studio.ViewModels"
-    Background="{StaticResource Br.BgDeep}">
+    x:Name="RootControl"
+    d:DataContext="{d:DesignInstance vm:RoleViewerViewModel}"
+    Background="{StaticResource Br.BgDeep}"
+    mc:Ignorable="d">
+
+    <UserControl.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVisible" />
+
+        <Style x:Key="ComboBoxToggleStyle" TargetType="ToggleButton">
+            <Setter Property="Background" Value="{StaticResource Br.BgElevated}" />
+            <Setter Property="Foreground" Value="{StaticResource Br.TextPrimary}" />
+            <Setter Property="BorderBrush" Value="{StaticResource Br.Border}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Padding" Value="10,6" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <Border x:Name="Root"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="5"
+                                Padding="{TemplateBinding Padding}">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="20" />
+                                </Grid.ColumnDefinitions>
+                                <ContentPresenter Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Left" />
+                                <TextBlock Grid.Column="1"
+                                           HorizontalAlignment="Center"
+                                           VerticalAlignment="Center"
+                                           FontSize="10"
+                                           Foreground="{StaticResource Br.Gold}"
+                                           Text="▾" />
+                            </Grid>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Root" Property="BorderBrush" Value="{StaticResource Br.GoldDim}" />
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Root" Property="BorderBrush" Value="{StaticResource Br.Gold}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </UserControl.Resources>
 
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="60" />
-            <!--  Toolbar  -->
             <RowDefinition Height="*" />
-            <!--  Main Content  -->
         </Grid.RowDefinitions>
 
-        <!--  ── TOOLBAR ──────────────────────────────────────────────────  -->
         <Border
             Grid.Row="0"
             Background="{StaticResource Br.BgCard}"
@@ -63,27 +114,22 @@
             </StackPanel>
         </Border>
 
-        <!--  ── MAIN CONTENT ────────────────────────────────────────────  -->
         <Grid Grid.Row="1">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="320" />
-                <!--  Sidebar  -->
                 <ColumnDefinition Width="4" />
-                <!--  Splitter  -->
                 <ColumnDefinition Width="*" />
-                <!--  Viewport  -->
             </Grid.ColumnDefinitions>
 
-            <!--  ── SIDEBAR: SLOTS & MOTIONS ────────────────────────────  -->
             <Border Grid.Column="0" Background="{StaticResource Br.BgSurface}">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <StackPanel Margin="12">
 
-                        <!--  Equipment Slots Section  -->
                         <TextBlock
                             Margin="0,0,0,12"
                             Style="{StaticResource SectionLabel}"
                             Text="EQUIPMENT SLOTS" />
+
                         <ItemsControl ItemsSource="{Binding AvailableSockets}">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
@@ -93,32 +139,135 @@
                                         Background="{StaticResource Br.BgCard}"
                                         BorderBrush="{StaticResource Br.Border}"
                                         BorderThickness="1"
-                                        CornerRadius="4">
-                                        <Grid>
-                                            <Grid.RowDefinitions>
-                                                <RowDefinition Height="Auto" />
-                                                <RowDefinition Height="Auto" />
-                                            </Grid.RowDefinitions>
+                                        CornerRadius="4"
+                                        Visibility="{Binding IsAvailable, Converter={StaticResource BoolToVisible}}">
+                                        <StackPanel>
 
-                                            <TextBlock
-                                                Margin="0,0,0,4"
-                                                FontSize="11"
-                                                FontWeight="Bold"
-                                                Foreground="{StaticResource Br.Gold}"
-                                                Text="{Binding SocketName}" />
-
-                                            <Grid Grid.Row="1">
+                                            <Grid Margin="0,0,0,5">
                                                 <Grid.ColumnDefinitions>
                                                     <ColumnDefinition Width="*" />
                                                     <ColumnDefinition Width="Auto" />
                                                 </Grid.ColumnDefinitions>
 
-                                                <ComboBox
+                                                <TextBlock
                                                     Grid.Column="0"
-                                                    DisplayMemberPath="DisplayName"
-                                                    ItemsSource="{Binding AvailableParts}"
-                                                    SelectedItem="{Binding SelectedPart, Mode=TwoWay}"
-                                                    Style="{StaticResource DarkComboBox}" />
+                                                    VerticalAlignment="Center"
+                                                    FontSize="11"
+                                                    FontWeight="Bold"
+                                                    Foreground="{StaticResource Br.Gold}"
+                                                    Text="{Binding SocketName}" />
+
+                                                <Button
+                                                    Grid.Column="1"
+                                                    Padding="6,2"
+                                                    Command="{Binding ToggleManualCommand}"
+                                                    FontSize="11"
+                                                    Style="{StaticResource GhostButton}"
+                                                    ToolTip="Manual path override">
+                                                    <Button.Content>
+                                                        <TextBlock>
+                                                            <TextBlock.Style>
+                                                                <Style TargetType="TextBlock">
+                                                                    <Setter Property="Text" Value="⚙ Manual" />
+                                                                    <Setter Property="Foreground" Value="{StaticResource Br.TextSecond}" />
+                                                                    <Style.Triggers>
+                                                                        <DataTrigger Binding="{Binding IsManualExpanded}" Value="True">
+                                                                            <Setter Property="Foreground" Value="{StaticResource Br.Gold}" />
+                                                                            <Setter Property="Text" Value="⚙ Manual ▲" />
+                                                                        </DataTrigger>
+                                                                    </Style.Triggers>
+                                                                </Style>
+                                                            </TextBlock.Style>
+                                                        </TextBlock>
+                                                    </Button.Content>
+                                                </Button>
+                                            </Grid>
+
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+
+                                                <ToggleButton
+                                                    x:Name="TreeToggle"
+                                                    Grid.Column="0"
+                                                    Style="{StaticResource ComboBoxToggleStyle}"
+                                                    Content="{Binding SelectedPart.DisplayName, FallbackValue='-- None --'}"
+                                                    IsChecked="{Binding IsDropdownOpen, Mode=TwoWay}" />
+
+                                                <Popup
+                                                    AllowsTransparency="True"
+                                                    IsOpen="{Binding IsDropdownOpen}"
+                                                    PlacementTarget="{Binding ElementName=TreeToggle}"
+                                                    StaysOpen="False"
+                                                    PopupAnimation="Fade">
+
+                                                    <Border
+                                                        Width="{Binding ActualWidth, ElementName=TreeToggle}"
+                                                        MaxHeight="350"
+                                                        Background="{StaticResource Br.BgCard}"
+                                                        BorderBrush="{StaticResource Br.Border}"
+                                                        BorderThickness="1"
+                                                        CornerRadius="6">
+                                                        <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                                            <TreeView
+                                                                Background="Transparent"
+                                                                BorderThickness="0"
+                                                                Margin="4"
+                                                                ItemsSource="{Binding PartTree}">
+
+                                                                <TreeView.Resources>
+                                                                    <HierarchicalDataTemplate DataType="{x:Type vm:PartTreeNode}" ItemsSource="{Binding Children}">
+                                                                        <Grid Margin="0,2">
+                                                                            <TextBlock 
+                                                                                x:Name="FolderText" 
+                                                                                Text="{Binding Name}" 
+                                                                                Foreground="{StaticResource Br.TextPrimary}" 
+                                                                                VerticalAlignment="Center" 
+                                                                                Margin="0,4" />
+                                                                            <Button 
+                                                                                x:Name="LeafBtn" 
+                                                                                Content="{Binding Name}"
+                                                                                Command="{Binding SelectCommand}"
+                                                                                CommandParameter="{Binding Part}"
+                                                                                Style="{StaticResource GhostButton}"
+                                                                                Padding="4,2"
+                                                                                HorizontalAlignment="Left"
+                                                                                Visibility="Collapsed" />
+                                                                        </Grid>
+                                                                        <HierarchicalDataTemplate.Triggers>
+                                                                            <DataTrigger Binding="{Binding IsLeaf}" Value="True">
+                                                                                <Setter TargetName="FolderText" Property="Visibility" Value="Collapsed" />
+                                                                                <Setter TargetName="LeafBtn" Property="Visibility" Value="Visible" />
+                                                                            </DataTrigger>
+
+                                                                            <DataTrigger Binding="{Binding Part.Quality}" Value="Super">
+                                                                                <Setter TargetName="LeafBtn" Property="Foreground" Value="{StaticResource Br.GoldGlow}" />
+                                                                            </DataTrigger>
+                                                                            <DataTrigger Binding="{Binding Part.Quality}" Value="Elite">
+                                                                                <Setter TargetName="LeafBtn" Property="Foreground" Value="#B284EE" />
+                                                                            </DataTrigger>
+                                                                            <DataTrigger Binding="{Binding Part.Quality}" Value="Unique">
+                                                                                <Setter TargetName="LeafBtn" Property="Foreground" Value="{StaticResource Br.Ok}" />
+                                                                            </DataTrigger>
+                                                                            <DataTrigger Binding="{Binding Part.Quality}" Value="Refined">
+                                                                                <Setter TargetName="LeafBtn" Property="Foreground" Value="#5CB8F0" />
+                                                                            </DataTrigger>
+                                                                        </HierarchicalDataTemplate.Triggers>
+                                                                    </HierarchicalDataTemplate>
+                                                                </TreeView.Resources>
+
+                                                                <TreeView.ItemContainerStyle>
+                                                                    <Style TargetType="TreeViewItem">
+                                                                        <Setter Property="IsExpanded" Value="False" />
+                                                                        <Setter Property="Foreground" Value="{StaticResource Br.TextPrimary}" />
+                                                                    </Style>
+                                                                </TreeView.ItemContainerStyle>
+                                                            </TreeView>
+                                                        </ScrollViewer>
+                                                    </Border>
+                                                </Popup>
 
                                                 <Button
                                                     Grid.Column="1"
@@ -129,13 +278,88 @@
                                                     Style="{StaticResource GhostButton}"
                                                     ToolTip="Remove" />
                                             </Grid>
-                                        </Grid>
+
+                                            <Border
+                                                Margin="0,7,0,0"
+                                                Padding="8"
+                                                Background="{StaticResource Br.BgDeep}"
+                                                BorderBrush="{StaticResource Br.GoldDim}"
+                                                BorderThickness="1"
+                                                CornerRadius="4"
+                                                Visibility="{Binding IsManualExpanded, Converter={StaticResource BoolToVisible}}">
+                                                <StackPanel>
+
+                                                    <TextBlock
+                                                        Margin="0,0,0,3"
+                                                        FontSize="10"
+                                                        Foreground="{StaticResource Br.TextSecond}"
+                                                        Text="MODEL PATH (.c3)" />
+                                                    <Grid Margin="0,0,0,6">
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="*" />
+                                                            <ColumnDefinition Width="Auto" />
+                                                        </Grid.ColumnDefinitions>
+                                                        <TextBox
+                                                            Grid.Column="0"
+                                                            FontFamily="Consolas"
+                                                            FontSize="11"
+                                                            Style="{StaticResource PathBox}"
+                                                            Text="{Binding ManualMeshPath, UpdateSourceTrigger=PropertyChanged}"
+                                                            ToolTip="Relative or absolute path to the .c3 mesh file" />
+                                                        <Button
+                                                            Grid.Column="1"
+                                                            Margin="4,0,0,0"
+                                                            Padding="8,0"
+                                                            Command="{Binding BrowseMeshCommand}"
+                                                            Content="…"
+                                                            FontSize="14"
+                                                            Style="{StaticResource GhostButton}"
+                                                            ToolTip="Browse for .c3 file — texture auto-matched from same folder" />
+                                                    </Grid>
+
+                                                    <TextBlock
+                                                        Margin="0,0,0,3"
+                                                        FontSize="10"
+                                                        Foreground="{StaticResource Br.TextSecond}"
+                                                        Text="TEXTURE PATH  (optional — auto-matched on browse)" />
+                                                    <Grid Margin="0,0,0,8">
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="*" />
+                                                            <ColumnDefinition Width="Auto" />
+                                                        </Grid.ColumnDefinitions>
+                                                        <TextBox
+                                                            Grid.Column="0"
+                                                            FontFamily="Consolas"
+                                                            FontSize="11"
+                                                            Style="{StaticResource PathBox}"
+                                                            Text="{Binding ManualTexturePath, UpdateSourceTrigger=PropertyChanged}"
+                                                            ToolTip="Leave blank to use the model's embedded texture. Auto-filled when .dds/.tga shares the mesh filename." />
+                                                        <Button
+                                                            Grid.Column="1"
+                                                            Margin="4,0,0,0"
+                                                            Padding="8,0"
+                                                            Command="{Binding BrowseTextureCommand}"
+                                                            Content="…"
+                                                            FontSize="14"
+                                                            Style="{StaticResource GhostButton}"
+                                                            ToolTip="Browse for texture (.dds / .tga)" />
+                                                    </Grid>
+
+                                                    <Button
+                                                        HorizontalAlignment="Stretch"
+                                                        Command="{Binding ApplyManualCommand}"
+                                                        Content="⬆  Load"
+                                                        Style="{StaticResource PrimaryButton}" />
+                                                </StackPanel>
+                                            </Border>
+
+                                        </StackPanel>
                                     </Border>
+
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
 
-                        <!--  Motions Section  -->
                         <TextBlock
                             Margin="0,20,0,12"
                             Style="{StaticResource SectionLabel}"
@@ -159,6 +383,7 @@
                                 </DataTemplate>
                             </ListBox.ItemTemplate>
                         </ListBox>
+
                     </StackPanel>
                 </ScrollViewer>
             </Border>
@@ -169,7 +394,6 @@
                 HorizontalAlignment="Stretch"
                 Background="{StaticResource Br.Border}" />
 
-            <!--  ── VIEWPORT ────────────────────────────────────────────  -->
             <Border Grid.Column="2" Background="#0B0B14">
                 <Grid x:Name="ViewportHost">
                     <StackPanel

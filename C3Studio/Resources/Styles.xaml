@@ -376,7 +376,9 @@
                             Margin="10,4,30,4"
                             VerticalAlignment="Center"
                             Content="{TemplateBinding SelectionBoxItem}"
+                            ContentStringFormat="{TemplateBinding SelectionBoxItemStringFormat}"
                             ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"
+                            ContentTemplateSelector="{TemplateBinding ItemTemplateSelector}"
                             IsHitTestVisible="False" />
 
                         <Popup
@@ -525,13 +527,13 @@
                         CornerRadius="4">
                         <Grid>
                             <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="16" />  
+                                <ColumnDefinition Width="16" />
                                 <!--  icon slot  -->
-                                <ColumnDefinition Width="8" />  
+                                <ColumnDefinition Width="8" />
                                 <!--  gap  -->
-                                <ColumnDefinition Width="*" />  
+                                <ColumnDefinition Width="*" />
                                 <!--  header  -->
-                                <ColumnDefinition Width="Auto" /> 
+                                <ColumnDefinition Width="Auto" />
                                 <!--  shortcut  -->
                             </Grid.ColumnDefinitions>
 

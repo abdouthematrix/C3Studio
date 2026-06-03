@@ -31,6 +31,15 @@ public class C3StudioGame : WpfGame
     public bool GetMeshVisibility(string name) => _renderer?.GetPhyVisibility(name) ?? true;
     public void SetMeshVisibility(string name, bool visible) => _renderer?.SetPhyVisibility(name, visible);
 
+    /// <summary>
+    /// Returns all phy names registered on the Body part of the currently loaded role.
+    /// Includes socket attachment phys (e.g. "v_armet", "v_r_weapon") that are hidden
+    /// by default but whose presence indicates the body supports that equipment slot.
+    /// Returns an empty sequence when no role / body is loaded yet.
+    /// </summary>
+    public IEnumerable<string> GetBodyPhyNames() =>
+        _renderer?.Role?.Body?.GetPhyNames() ?? [];
+
     // ── Playback ──────────────────────────────────────────────────────────
     public bool IsPlaying
     {
