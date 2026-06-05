@@ -354,7 +354,7 @@ public class RoleViewerViewModel : ViewModelBase
                 ? _gameData.ResolveTexture(part.TextureIds[i]) ?? _gameData.ResolveTexture(1990000000 + part.TextureIds[i])
                 : _gameData.ResolveTexture(part.TextureIds[i]));
 
-            result.Add(new PartDescriptor(slotName, m, t, part.Asb[i], part.Adb[i]));
+            result.Add(new PartDescriptor(slotName, m, t, part.Id, part.Asb[i], part.Adb[i]));
         }
         return result;
     }

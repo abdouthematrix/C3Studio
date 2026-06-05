@@ -25,24 +25,29 @@
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="ToggleButton">
-                        <Border x:Name="Root"
-                                Background="{TemplateBinding Background}"
-                                BorderBrush="{TemplateBinding BorderBrush}"
-                                BorderThickness="{TemplateBinding BorderThickness}"
-                                CornerRadius="5"
-                                Padding="{TemplateBinding Padding}">
+                        <Border
+                            x:Name="Root"
+                            Padding="{TemplateBinding Padding}"
+                            Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            CornerRadius="5">
                             <Grid>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="20" />
                                 </Grid.ColumnDefinitions>
-                                <ContentPresenter Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Left" />
-                                <TextBlock Grid.Column="1"
-                                           HorizontalAlignment="Center"
-                                           VerticalAlignment="Center"
-                                           FontSize="10"
-                                           Foreground="{StaticResource Br.Gold}"
-                                           Text="▾" />
+                                <ContentPresenter
+                                    Grid.Column="0"
+                                    HorizontalAlignment="Left"
+                                    VerticalAlignment="Center" />
+                                <TextBlock
+                                    Grid.Column="1"
+                                    HorizontalAlignment="Center"
+                                    VerticalAlignment="Center"
+                                    FontSize="10"
+                                    Foreground="{StaticResource Br.Gold}"
+                                    Text="▾" />
                             </Grid>
                         </Border>
                         <ControlTemplate.Triggers>
@@ -101,11 +106,14 @@
                     Style="{StaticResource GhostButton}"
                     ToolTip="Previous Frame" />
                 <Button
-                    Width="40"
-                    Margin="5,0"
+                    Width="36"
+                    Margin="4,0"
+                    Padding="0"
                     Command="{Binding PlayPauseCommand}"
                     Content="{Binding PlayPauseLabel}"
-                    Style="{StaticResource PrimaryButton}" />
+                    FontSize="16"
+                    Style="{StaticResource PrimaryButton}"
+                    ToolTip="Play / Pause  (Space)" />
                 <Button
                     Command="{Binding StepFwdCommand}"
                     Content="▶"
@@ -192,16 +200,16 @@
                                                 <ToggleButton
                                                     x:Name="TreeToggle"
                                                     Grid.Column="0"
-                                                    Style="{StaticResource ComboBoxToggleStyle}"
                                                     Content="{Binding SelectedPart.DisplayName, FallbackValue='-- None --'}"
-                                                    IsChecked="{Binding IsDropdownOpen, Mode=TwoWay}" />
+                                                    IsChecked="{Binding IsDropdownOpen, Mode=TwoWay}"
+                                                    Style="{StaticResource ComboBoxToggleStyle}" />
 
                                                 <Popup
                                                     AllowsTransparency="True"
                                                     IsOpen="{Binding IsDropdownOpen}"
                                                     PlacementTarget="{Binding ElementName=TreeToggle}"
-                                                    StaysOpen="False"
-                                                    PopupAnimation="Fade">
+                                                    PopupAnimation="Fade"
+                                                    StaysOpen="False">
 
                                                     <Border
                                                         Width="{Binding ActualWidth, ElementName=TreeToggle}"
@@ -212,28 +220,28 @@
                                                         CornerRadius="6">
                                                         <ScrollViewer VerticalScrollBarVisibility="Auto">
                                                             <TreeView
+                                                                Margin="4"
                                                                 Background="Transparent"
                                                                 BorderThickness="0"
-                                                                Margin="4"
                                                                 ItemsSource="{Binding PartTree}">
 
                                                                 <TreeView.Resources>
                                                                     <HierarchicalDataTemplate DataType="{x:Type vm:PartTreeNode}" ItemsSource="{Binding Children}">
                                                                         <Grid Margin="0,2">
-                                                                            <TextBlock 
-                                                                                x:Name="FolderText" 
-                                                                                Text="{Binding Name}" 
-                                                                                Foreground="{StaticResource Br.TextPrimary}" 
-                                                                                VerticalAlignment="Center" 
-                                                                                Margin="0,4" />
-                                                                            <Button 
-                                                                                x:Name="LeafBtn" 
-                                                                                Content="{Binding Name}"
-                                                                                Command="{Binding SelectCommand}"
-                                                                                CommandParameter="{Binding Part}"
-                                                                                Style="{StaticResource GhostButton}"
+                                                                            <TextBlock
+                                                                                x:Name="FolderText"
+                                                                                Margin="0,4"
+                                                                                VerticalAlignment="Center"
+                                                                                Foreground="{StaticResource Br.TextPrimary}"
+                                                                                Text="{Binding Name}" />
+                                                                            <Button
+                                                                                x:Name="LeafBtn"
                                                                                 Padding="4,2"
                                                                                 HorizontalAlignment="Left"
+                                                                                Command="{Binding SelectCommand}"
+                                                                                CommandParameter="{Binding Part}"
+                                                                                Content="{Binding Name}"
+                                                                                Style="{StaticResource GhostButton}"
                                                                                 Visibility="Collapsed" />
                                                                         </Grid>
                                                                         <HierarchicalDataTemplate.Triggers>

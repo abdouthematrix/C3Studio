@@ -21,8 +21,8 @@ public static class C3BlendHelper
     /// </summary>
     public static BlendState Resolve(int asb, int adb)
     {
-        var key = (asb, adb);
-        if (_cache.TryGetValue(key, out var cached)) return cached;
+        //var key = (asb, adb);
+        //if (_cache.TryGetValue(key, out var cached)) return cached;
 
         var src = D3dBlend(asb);
         var dst = D3dBlend(adb);
@@ -33,7 +33,7 @@ public static class C3BlendHelper
             AlphaSourceBlend = src,
             AlphaDestinationBlend = dst,
         };
-        return _cache[key] = bs;
+        return bs;// _cache[key] = bs;
     }
 
     /// <summary>

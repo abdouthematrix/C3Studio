@@ -22,21 +22,6 @@ public sealed class C3Role : IDisposable
     // ── Frame state (delegated to Body) ───────────────────────────────────
     public int MaxFrameCount => Body?.MaxFrameCount ?? 0;
     public int CurrentFrame => Body?.CurrentFrame ?? 0;
-
-    private static readonly IReadOnlyDictionary<string, string> SlotSocketMap =
-        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-        {
-            { "ARMET",   "v_armet"    },
-            { "RWEAPON", "v_r_weapon" },
-            { "LWEAPON", "v_l_weapon" },
-            { "MOUNT",   "v_mount"    },
-            { "MANTLE",  "v_mantle"   },
-            { "CAPE",    "v_back"     },
-            { "MISC",    "v_misc"     },
-            { "PELVIS",  "v_pelvis"   },
-            { "SPIRIT",  "v_rootloc"  },
-        };
-
     // ── Per-frame update ──────────────────────────────────────────────────
     public void AdvanceFrame(int step)
     {

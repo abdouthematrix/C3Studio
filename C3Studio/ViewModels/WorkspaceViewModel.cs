@@ -252,7 +252,7 @@ public class WorkspaceViewModel : ViewModelBase
         ClearSearchCommand = Cmd(() => SearchText = string.Empty);
         ExportNodeCommand = Cmd(ExportNode, () => CanExport());
         GoToSetupCommand = Cmd(() => _nav.GoToSetup());
-        GoToRoleViewerCommand = Cmd(() => _nav.GoToRoleViewer());
+        GoToRoleViewerCommand = Cmd(() => { _game?.Dispose(); _nav.GoToRoleViewer(); });
 
     }
 
@@ -401,8 +401,9 @@ public class WorkspaceViewModel : ViewModelBase
         // ── Main mesh (SimpleObj) ─────────────────────────────────────────
         string[] objMeshes = [], objTextures = [];
         int[] objAsb = [], objAdb = [];
+        uint[] rolepartsids = [];
         if (obj != null)
-            (objMeshes, objTextures, objAsb, objAdb) = BuildMeshArrays(obj, npc.Asb, npc.Adb);
+            (objMeshes, objTextures, rolepartsids, objAsb, objAdb) = BuildMeshArrays(obj, npc.Asb, npc.Adb);
 
         // ── Effect parts ──────────────────────────────────────────────────
         string[] efxMeshes = [], efxTextures = [];
@@ -421,6 +422,7 @@ public class WorkspaceViewModel : ViewModelBase
             {
                 MeshPaths = objMeshes,
                 TexturePaths = objTextures,
+                RolePartsIds = rolepartsids,
                 Motions = motions,
                 Asb = objAsb,
                 Adb = objAdb,
@@ -448,6 +450,7 @@ public class WorkspaceViewModel : ViewModelBase
                     {
                         MeshPaths = objMeshes,
                         TexturePaths = objTextures,
+                        RolePartsIds = rolepartsids,
                         Motions = motions,
                         Asb = objAsb,
                         Adb = objAdb,
@@ -474,6 +477,7 @@ public class WorkspaceViewModel : ViewModelBase
                         {
                             MeshPaths = [objMeshes[i]],
                             TexturePaths = [objTextures[i]],
+                            RolePartsIds = [rolepartsids[i]],
                             Motions = motions,
                             Asb = [objAsb[i]],
                             Adb = [objAdb[i]],
@@ -537,7 +541,7 @@ public class WorkspaceViewModel : ViewModelBase
     private AssetNode BuildSimpleObjNode(C3DSimpleObjInfo obj)
     {
         // SimpleObj has no Asb/Adb — use defaults (5/6).
-        var (meshPaths, texturePaths, asb, adb) = BuildMeshArrays(obj);
+        var (meshPaths, texturePaths, rolepartsids, asb, adb) = BuildMeshArrays(obj);
 
         var node = new AssetNode
         {
@@ -547,6 +551,7 @@ public class WorkspaceViewModel : ViewModelBase
             {
                 MeshPaths = meshPaths,
                 TexturePaths = texturePaths,
+                RolePartsIds = rolepartsids,
                 Asb = asb,
                 Adb = adb,
             }
@@ -566,6 +571,7 @@ public class WorkspaceViewModel : ViewModelBase
                     {
                         MeshPaths = [meshPaths[i]],
                         TexturePaths = [texturePaths[i]],
+                        RolePartsIds = [rolepartsids[i]],
                         Asb = [asb[i]],
                         Adb = [adb[i]],
                     }
@@ -894,12 +900,13 @@ public class WorkspaceViewModel : ViewModelBase
         var armor = _gameData.FindRolePart((uint)(t.Look * 1_000_000), RolePartType.Armor);
         if (armor != null)
         {
-            var (meshPaths, texturePaths, asb, adb) = BuildMeshArraysForRolePart(armor);
+            var (meshPaths, texturePaths, rolepartsids, asb, adb) = BuildMeshArraysForRolePart(armor);
             if (meshPaths.Length > 0)
                 assetData = new AssetData
                 {
                     MeshPaths = meshPaths,
                     TexturePaths = texturePaths,
+                    RolePartsIds = rolepartsids,
                     Asb = asb,
                     Adb = adb,
                 };
@@ -960,7 +967,7 @@ public class WorkspaceViewModel : ViewModelBase
     private AssetNode BuildItemTextureNode(ItemTextureInfo item)
     {
         // Try to find the renderable mesh by matching the item ID across all equipment tables.
-        var (baseMeshes, baseAsb, baseAdb) = TryFindItemMesh(item.Id);
+        var (baseMeshes, baseRolePartsIds, baseAsb, baseAdb) = TryFindItemMesh(item.Id);
 
         var parentNode = new AssetNode
         {
@@ -1001,6 +1008,7 @@ public class WorkspaceViewModel : ViewModelBase
                     {
                         MeshPaths = baseMeshes,
                         TexturePaths = texturePaths,
+                        RolePartsIds = baseRolePartsIds,
                         Asb = baseAsb,
                         Adb = baseAdb,
                     }
@@ -1027,15 +1035,16 @@ public class WorkspaceViewModel : ViewModelBase
 
         string[] bodyMeshes = [], bodyTextures = [];
         int[] bodyAsb = [], bodyAdb = [];
+        uint[] rolepartsids = [];
 
         string[] hairMeshes = [], hairTextures = [];
         int[] hairAsb = [], hairAdb = [];
-
+        uint[] hairRolePartIds = [];
         if (role.IsSimpleObjRole)
         {
             var obj = _gameData.FindSimpleObj(role.SimpleObjId);
             if (obj != null)
-                (bodyMeshes, bodyTextures, bodyAsb, bodyAdb) = BuildMeshArrays(obj);
+                (bodyMeshes, bodyTextures, rolepartsids, bodyAsb, bodyAdb) = BuildMeshArrays(obj);
 
             TryAddMotion(motions, "StandBy", role.StandByMotionId);
             TryAddMotion(motions, "Blaze", role.BlazeMotionId);
@@ -1046,14 +1055,14 @@ public class WorkspaceViewModel : ViewModelBase
                      ?? _gameData.FindRolePart(role.EffectiveArmorId, RolePartType.Armor)
                      ?? (role.RawArmorId != 0 ? _gameData.FindRolePart((uint)(role.Look * 1_000_000), RolePartType.Armor) : null);
             if (armor != null)
-                (bodyMeshes, bodyTextures, bodyAsb, bodyAdb) = BuildMeshArraysForRolePart(armor);
+                (bodyMeshes, bodyTextures, rolepartsids, bodyAsb, bodyAdb) = BuildMeshArraysForRolePart(armor);
 
             if (role.RawHairId != 0)
             {
                 var armet = _gameData.FindRolePart(role.RawHairId, RolePartType.Armet)
                          ?? _gameData.FindRolePart(role.EffectiveHairId, RolePartType.Armet);
                 if (armet != null)
-                    (hairMeshes, hairTextures, hairAsb, hairAdb) = BuildMeshArraysForRolePart(armet);
+                    (hairMeshes, hairTextures, hairRolePartIds, hairAsb, hairAdb) = BuildMeshArraysForRolePart(armet);
             }
 
             TryAddMotion(motions, "StandBy", (ulong)(role.Look * 1_000_000 + (int)RoleActionType.StandBy));
@@ -1081,11 +1090,11 @@ public class WorkspaceViewModel : ViewModelBase
             fxfAdb.Concat(fxbAdb).ToArray());
 
         // --- NEW: Map to Descriptors instead of flattening arrays ---
-        var bodyDescriptors = bodyMeshes.Select((m, i) => new PartDescriptor("Body", m, bodyTextures[i], bodyAsb[i], bodyAdb[i]))
+        var bodyDescriptors = bodyMeshes.Select((m, i) => new PartDescriptor("Body", m, bodyTextures[i], rolepartsids[i], bodyAsb[i], bodyAdb[i]))
                                         .Where(p => !string.IsNullOrEmpty(p.MeshPath) && !p.MeshPath.StartsWith('?'))
                                         .ToArray();
 
-        var hairDescriptors = hairMeshes.Select((m, i) => new PartDescriptor("Armet", m, hairTextures[i], hairAsb[i], hairAdb[i]))
+        var hairDescriptors = hairMeshes.Select((m, i) => new PartDescriptor("Armet", m, hairTextures[i], hairRolePartIds[i], hairAsb[i], hairAdb[i]))
                                         .Where(p => !string.IsNullOrEmpty(p.MeshPath) && !p.MeshPath.StartsWith('?'))
                                         .ToArray();
 
@@ -1330,7 +1339,7 @@ public class WorkspaceViewModel : ViewModelBase
     }
     private AssetNode BuildRolePartNode(RolePart part)
     {
-        var (meshPaths, texturePaths, asb, adb) = BuildMeshArraysForRolePart(part);
+        var (meshPaths, texturePaths, rolepartsids, asb, adb) = BuildMeshArraysForRolePart(part);
         var motions = new List<MotionData>();
 
         // Reattach motions based on part type
@@ -1427,6 +1436,7 @@ public class WorkspaceViewModel : ViewModelBase
             {
                 MeshPaths = meshPaths,
                 TexturePaths = texturePaths,
+                RolePartsIds = rolepartsids,
                 Motions = motions.ToArray(),
                 Asb = asb,
                 Adb = adb,
@@ -1449,6 +1459,7 @@ public class WorkspaceViewModel : ViewModelBase
                     {
                         MeshPaths = [meshPaths[i]],
                         TexturePaths = [texturePaths[i]],
+                        RolePartsIds = [rolepartsids[i]],
                         Motions = motions.ToArray(),
                         Asb = [asb[i]],
                         Adb = [adb[i]],
@@ -1558,64 +1569,70 @@ public class WorkspaceViewModel : ViewModelBase
     /// Armor → Armet → Weapon in order.
     /// Returns empty arrays when no match is found (texture-only entry).
     /// </summary>
-    private (string[] Meshes, int[] Asb, int[] Adb) TryFindItemMesh(uint itemId)
+    private (string[] Meshes, uint[] RolePartsIds, int[] Asb, int[] Adb) TryFindItemMesh(uint itemId)
     {
-
         var armor = _gameData.FindRolePart(itemId, RolePartType.Armor);
         if (armor != null)
         {
             var meshes = new string[armor.Parts];
+            var rolepartsids = new uint[armor.Parts];
             var asb = new int[armor.Parts];
             var adb = new int[armor.Parts];
             for (int i = 0; i < armor.Parts; i++)
             {
                 meshes[i] = _gameData.ResolveMesh(armor.MeshIds[i]) ?? $"? ({armor.MeshIds[i]})";
+                rolepartsids[i] = armor.Id;
                 asb[i] = armor.Asb[i];
                 adb[i] = armor.Adb[i];
             }
-            return (meshes, asb, adb);
+            return (meshes, rolepartsids, asb, adb);
         }
 
         var armet = _gameData.FindRolePart(itemId, RolePartType.Armet);
         if (armet != null)
         {
             var meshes = new string[armet.Parts];
+            var rolepartsids = new uint[armet.Parts];
             var asb = new int[armet.Parts];
             var adb = new int[armet.Parts];
             for (int i = 0; i < armet.Parts; i++)
             {
                 meshes[i] = _gameData.ResolveMesh(armet.MeshIds[i]) ?? $"? ({armet.MeshIds[i]})";
+                rolepartsids[i] = armet.Id;
                 asb[i] = armet.Asb[i];
                 adb[i] = armet.Adb[i];
             }
-            return (meshes, asb, adb);
+            return (meshes, rolepartsids, asb, adb);
         }
 
         var weapon = _gameData.FindRolePart(itemId, RolePartType.Weapon);
         if (weapon != null)
         {
             var meshes = new string[weapon.Parts];
+            var rolepartsids = new uint[weapon.Parts];
             var asb = new int[weapon.Parts];
             var adb = new int[weapon.Parts];
             for (int i = 0; i < weapon.Parts; i++)
             {
                 meshes[i] = _gameData.ResolveMesh(weapon.MeshIds[i]) ?? $"? ({weapon.MeshIds[i]})";
+                rolepartsids[i] = weapon.Id;
                 asb[i] = weapon.Asb[i];
                 adb[i] = weapon.Adb[i];
             }
-            return (meshes, asb, adb);
+            return (meshes, rolepartsids, asb, adb);
         }
 
         var obj = _gameData.ResolveMesh(itemId);
         if (!string.IsNullOrEmpty(obj))
         {
             var meshes = new[] { obj };
+            var rolepartsids = new[] { itemId };
             var asb = new[] { 5 };
             var adb = new[] { 2 };
-            return (meshes, asb, adb);
+            return (meshes, rolepartsids, asb, adb);
         }
 
-        return ([], [], []);
+        return ([], [], [], []);
     }
 
     // ── Mesh-array helpers ────────────────────────────────────────────────
@@ -1643,31 +1660,35 @@ public class WorkspaceViewModel : ViewModelBase
     }
 
     /// <summary>SimpleObj has no Asb/Adb — fills arrays with the supplied defaults (or 5/6).</summary>
-    private (string[] Paths, string[] Textures, int[] Asb, int[] Adb) BuildMeshArrays(
+    private (string[] Paths, string[] Textures,uint[] Rolepartsids, int[] Asb, int[] Adb) BuildMeshArrays(
         C3DSimpleObjInfo obj, int defaultAsb = 5, int defaultAdb = 6)
     {
         var meshes = new string[obj.Parts];
         var textures = new string[obj.Parts];
+        var rolepartsids = new uint[obj.Parts];
         var asb = new int[obj.Parts];
         var adb = new int[obj.Parts];
         for (int i = 0; i < obj.Parts; i++)
         {
+            rolepartsids[i] = obj.IdType;
             meshes[i] = _gameData.ResolveMesh(obj.MeshIds[i]) ?? $"? ({obj.MeshIds[i]})";
             textures[i] = _gameData.ResolveTexture(obj.TextureIds[i]) ?? $"? ({obj.TextureIds[i]})";
             asb[i] = defaultAsb;
             adb[i] = defaultAdb;
         }
-        return (meshes, textures, asb, adb);
+        return (meshes, textures, rolepartsids, asb, adb);
     }
-    private (string[] Paths, string[] Textures, int[] Asb, int[] Adb) BuildMeshArraysForRolePart(RolePart part)
+    private (string[] Paths, string[] Textures, uint[] Rolepartsids, int[] Asb, int[] Adb) BuildMeshArraysForRolePart(RolePart part)
     {
         var meshes = new string[part.Parts];
         var textures = new string[part.Parts];
+        var rolepartsids = new uint[part.Parts];
         var asb = new int[part.Parts];
         var adb = new int[part.Parts];
 
         for (int i = 0; i < part.Parts; i++)
         {
+            rolepartsids[i] = part.Id;
             meshes[i] = (part.PartType == RolePartType.Armet
                 ? _gameData.ResolveMesh(part.MeshIds[i]) ?? _gameData.ResolveMesh(1990000000 + part.MeshIds[i])
                 : _gameData.ResolveMesh(part.MeshIds[i]))
@@ -1680,7 +1701,7 @@ public class WorkspaceViewModel : ViewModelBase
             adb[i] = part.Adb[i];
         }
 
-        return (meshes, textures, asb, adb);
+        return (meshes, textures, rolepartsids, asb, adb);
     }
 
     /// <summary>
@@ -1955,7 +1976,11 @@ public class WorkspaceViewModel : ViewModelBase
                 // Manual texture override applies only to single-part loads
                 if (data.MeshPaths.Length == 1 && !string.IsNullOrEmpty(TexturePath))
                     tex = TexturePath;
-                return (MeshPath: mesh, TexturePath: tex, Asb: data.GetAsb(i), Adb: data.GetAdb(i));
+
+                // Fetch the ID safely, falling back to 0 if bounds are mismatched
+                uint rolePartId = i < data.RolePartsIds.Length ? data.RolePartsIds[i] : 0;
+
+                return (MeshPath: mesh, TexturePath: tex, rolePartId, Asb: data.GetAsb(i), Adb: data.GetAdb(i));
             })
             .Where(p => !string.IsNullOrEmpty(p.MeshPath));
 
@@ -2054,19 +2079,19 @@ public class WorkspaceViewModel : ViewModelBase
 
         try
         {
-            IEnumerable<(string MeshPath, string? TexturePath, int Asb, int Adb)> parts;
+            IEnumerable<(string MeshPath, string? TexturePath,uint rolepartid, int Asb, int Adb)> parts;
 
             if (_modelPaths.Count == 1)
             {
                 var tex = !string.IsNullOrEmpty(TexturePath) ? TexturePath : FindTexture(_modelPaths[0]);
-                parts = [(MeshPath: _modelPaths[0], TexturePath: string.IsNullOrEmpty(tex) ? null : tex, Asb, Adb)];
+                parts = [(MeshPath: _modelPaths[0], TexturePath: string.IsNullOrEmpty(tex) ? null : tex, (uint)0, Asb, Adb)];
             }
             else
             {
                 parts = _modelPaths.Select(mesh =>
                 {
                     string tex = FindTexture(mesh);
-                    return (MeshPath: mesh, TexturePath: string.IsNullOrEmpty(tex) ? null : tex, Asb, Adb);
+                    return (MeshPath: mesh, TexturePath: string.IsNullOrEmpty(tex) ? null : tex, (uint)0, Asb, Adb);
                 });
             }
 

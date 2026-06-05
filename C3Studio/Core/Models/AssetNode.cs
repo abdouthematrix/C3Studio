@@ -29,10 +29,22 @@ public sealed record EffectDescriptor(
     int Asb = 5,
     int Adb = 6);
 
+// ── Part descriptor ───────────────────────────────────────────────────────
+
+public readonly record struct PartDescriptor(
+    string SlotName,
+    string MeshPath,
+    string? TexturePath,
+    uint RolePartId,
+    int Asb = 5,
+    int Adb = 6,
+    RoleActionType Action = default);
+
 public sealed class AssetData
 {
     public string[] MeshPaths { get; init; } = [];
     public string[] TexturePaths { get; init; } = [];
+    public uint[] RolePartsIds { get; init; } = [];
     public MotionData[] Motions { get; init; } = [];
     /// <summary>
     /// Effect models that are attached to the body part's

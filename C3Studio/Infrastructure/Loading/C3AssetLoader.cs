@@ -47,6 +47,7 @@ public sealed class C3AssetLoader
         string meshPath,
         string? texturePath,
         string slotName,
+        uint rolePartId,
         int asb = 5,
         int adb = 6)
     {
@@ -61,7 +62,7 @@ public sealed class C3AssetLoader
         if (!string.IsNullOrEmpty(texturePath))
             BindTextureToPart(model, texturePath);
 
-        return new C3RolePart(model, slotName, effectiveAsb, effectiveAdb);
+        return new C3RolePart(model, slotName, rolePartId, effectiveAsb, effectiveAdb);
     }
 
     // ── Effect loading ────────────────────────────────────────────────────
@@ -121,13 +122,13 @@ public sealed class C3AssetLoader
         return new C3Effect(models, slotName, effectiveAsb, effectiveAdb);
     }
     public C3Role? LoadRole(
-        IEnumerable<(string MeshPath, string? TexturePath, int Asb, int Adb)> parts)
+        IEnumerable<(string MeshPath, string? TexturePath, uint RolePartId, int Asb, int Adb)> parts)
     {
         var role = new C3Role();
-        foreach (var (meshPath, texturePath, asb, adb) in parts)
+        foreach (var (meshPath, texturePath, rolePartId, asb, adb) in parts)
         {
             string slot = "Body";
-            var p = LoadPart(meshPath, texturePath, slot, asb, adb);
+            var p = LoadPart(meshPath, texturePath, slot, rolePartId, asb, adb);
             if (p != null) role.AssignSlot(p);
         }
 
@@ -139,7 +140,7 @@ public sealed class C3AssetLoader
         var role = new C3Role();
         foreach (var desc in descriptors)
         {
-            var p = LoadPart(desc.MeshPath, desc.TexturePath, desc.SlotName, desc.Asb, desc.Adb);
+            var p = LoadPart(desc.MeshPath, desc.TexturePath, desc.SlotName, desc.RolePartId, desc.Asb, desc.Adb);
             if (p != null) role.AssignSlot(p);
         }
         return (role.Body != null) ? role : null;
@@ -260,12 +261,3 @@ public sealed class C3AssetLoader
         };
     }
 }
-
-// ── Part descriptor ───────────────────────────────────────────────────────
-
-public readonly record struct PartDescriptor(
-    string SlotName,
-    string MeshPath,
-    string? TexturePath,
-    int Asb = 5,
-    int Adb = 6);

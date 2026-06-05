@@ -2,6 +2,7 @@ using System.IO;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using C3Studio.Infrastructure.C3Format;
+using C3Studio.Core.Models; // Ensure RoleActionType is available
 
 namespace C3Studio.Infrastructure.Rendering;
 
@@ -11,49 +12,64 @@ public sealed class C3RolePart : IDisposable
     public int BlendAsb { get; set; } = 5;   // D3DBLEND_SRCALPHA
     public int BlendAdb { get; set; } = 6;   // D3DBLEND_INVSRCALPHA
     public List<C3Effect> Effects { get; } = new();
+
+    // ── Tracking properties ───────────────────────────────────────────────
+    public uint RolePartId { get; }
+    public RoleActionType Action { get; }
+
     // ── Inner model ───────────────────────────────────────────────────────
     public C3Model Model => _model;
     private readonly C3Model _model;
+
     // ── Frame state (delegated to model) ──────────────────────────────────
     public int MaxFrameCount => _model.MaxFrameCount;
     public int CurrentFrame => PeekCurrentFrame();
 
     // ── Constructor ───────────────────────────────────────────────────────
-    public C3RolePart(C3Model model, string slotName, int asb = 5, int adb = 6)
+    public C3RolePart(C3Model model, string slotName, uint rolePartId, int asb = 5, int adb = 6,  RoleActionType action = default)
     {
         _model = model;
         SlotName = slotName;
         BlendAsb = asb;
         BlendAdb = adb;
+        RolePartId = rolePartId;
+        Action = action;
     }
+
     public C3Motion? GetVirtualMotion(string name) =>
         _model.GetVirtualMotion(name);
+
     public void SetVirtualMotion(C3Motion? socketMotion)
     {
         if (socketMotion != null)
             _model.SetVirtualMotion(socketMotion);
     }
+
     public void MultiplyPhy(Matrix matrix)
     {
         foreach (var phy in _model.Phys)
             phy.Multiply(-1, matrix);
     }
+
     public void ClearMatrix()
     {
         foreach (var phy in _model.Phys)
             phy.ClearMatrix();
     }
+
     // ── Per-frame compute ─────────────────────────────────────────────────
     public void AdvanceFrame(int step)
     {
         _model.AdvanceFrame(step);
         foreach (var e in Effects) e.AdvanceFrame(step);
     }
+
     public void SetFrame(int frame)
     {
         _model.SetFrame(frame);
         foreach (var e in Effects) e.SetFrame(frame);
     }
+
     public void Calculate()
     {
         _model.Calculate();
@@ -63,21 +79,25 @@ public sealed class C3RolePart : IDisposable
             e.Calculate();  // skin against that matrix
         }
     }
+
     public void UpdateShapes()
     {
         _model.UpdateShapes();
         foreach (var e in Effects) e.UpdateShapes();
     }
+
     public void Update()
     {
         _model.Update();
         foreach (var e in Effects) e.Update();
     }
+
     public void UploadVertices()
     {
         _model.UploadAllPhyVertices();
         foreach (var e in Effects) e.UploadVertices();
     }
+
     // ── Motion swap ───────────────────────────────────────────────────────
     public void ChangeMotion(Stream stream)
     {
@@ -91,11 +111,13 @@ public sealed class C3RolePart : IDisposable
         _model.Initialize(gd);
         foreach (var e in Effects) e.Initialize(gd);
     }
+
     public void Draw(GraphicsDevice gd, Matrix view, Matrix projection)
     {
         _model.Draw(gd, view, projection);
         foreach (var e in Effects) e.Draw(gd, view, projection);
     }
+
     // ── Visibility ────────────────────────────────────────────────────────
     public IEnumerable<string> GetPhyNames() => _model.GetPhyNames();
     public bool GetPhyVisibility(string name) => _model.GetPhyVisibility(name);
@@ -108,6 +130,7 @@ public sealed class C3RolePart : IDisposable
         foreach (var e in Effects) e.Dispose();
         Effects.Clear();
     }
+
     // ── Private ───────────────────────────────────────────────────────────
     private int PeekCurrentFrame()
     {

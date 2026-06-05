@@ -121,7 +121,7 @@ public class C3StudioGame : WpfGame
 
     // ── Public loading API ────────────────────────────────────────────────    
     public void LoadC3Parts(
-        IEnumerable<(string MeshPath, string? TexturePath, int Asb, int Adb)> parts,
+        IEnumerable<(string MeshPath, string? TexturePath, uint RolePartId, int Asb, int Adb)> parts,
         string? motionPath = null)
     {
         if (_renderer == null || _loader == null) return;
@@ -186,7 +186,7 @@ public class C3StudioGame : WpfGame
 
         foreach (var desc in parts)
         {
-            var rolePart = _loader.LoadPart(desc.MeshPath, desc.TexturePath, slotName, desc.Asb, desc.Adb);
+            var rolePart = _loader.LoadPart(desc.MeshPath, desc.TexturePath, slotName, desc.RolePartId, desc.Asb, desc.Adb);
             if (rolePart != null)
             {
                 rolePart.Initialize(GraphicsDevice);
