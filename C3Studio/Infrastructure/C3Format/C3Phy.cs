@@ -441,15 +441,30 @@ public class C3Phy : IDisposable
 
         _accumUV += UVStep;
         float seg = TexRow > 0 ? 1f / TexRow : 1f;
-
+        
         for (int v = 0; v < SourceVertices.Count; v++)
         {
             var sv = SourceVertices[v];
             Vector3 pos = Vector3.Zero;
             for (int l = 0; l < C3Constants.BoneMax; l++)
+            {
                 if (sv.BoneWeight[l] > 0f)
-                { pos = Vector3.Transform(sv.Positions[0], bone[sv.BoneIndex[l]]); break; }
-
+                {
+                    if (sv.Positions.Length > 0 && l < sv.BoneIndex.Length)
+                    {
+                        int boneIdx = sv.BoneIndex[l];
+                        if (boneIdx >= 0 && boneIdx < bone.Length)
+                        {
+                            pos = Vector3.Transform(sv.Positions[0], bone[boneIdx]);
+                        }
+                        else
+                        {
+                            pos = sv.Positions[0];
+                        }
+                    }
+                    break;
+                }
+            }
             pos.Z = -pos.Z; // flip D3D left-hand → MonoGame right-hand
             OutputVertices[v].Position = pos;
             OutputVertices[v].TexCoord = tex > -1

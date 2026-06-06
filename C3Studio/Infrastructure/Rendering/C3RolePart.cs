@@ -2,7 +2,7 @@ using System.IO;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using C3Studio.Infrastructure.C3Format;
-using C3Studio.Core.Models; // Ensure RoleActionType is available
+using C3Studio.Core.Models;
 
 namespace C3Studio.Infrastructure.Rendering;
 
@@ -26,7 +26,7 @@ public sealed class C3RolePart : IDisposable
     public int CurrentFrame => PeekCurrentFrame();
 
     // ── Constructor ───────────────────────────────────────────────────────
-    public C3RolePart(C3Model model, string slotName, uint rolePartId, int asb = 5, int adb = 6,  RoleActionType action = default)
+    public C3RolePart(C3Model model, string slotName, uint rolePartId, int asb = 5, int adb = 6, RoleActionType action = default)
     {
         _model = model;
         SlotName = slotName;
@@ -39,11 +39,9 @@ public sealed class C3RolePart : IDisposable
     public C3Motion? GetVirtualMotion(string name) =>
         _model.GetVirtualMotion(name);
 
-    public void SetVirtualMotion(C3Motion? socketMotion)
+    public void SetVirtualMotion(C3Motion? socketMotion, Matrix? matrix = null)
     {
-        if (socketMotion != null)
-            _model.SetVirtualMotion(socketMotion);
-    }
+        _model.SetVirtualMotion(socketMotion, matrix);    }
 
     public void MultiplyPhy(Matrix matrix)
     {

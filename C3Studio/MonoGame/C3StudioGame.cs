@@ -229,6 +229,21 @@ public class C3StudioGame : WpfGame
         }
     }
 
+    public ulong SetAction(RoleActionType actionType)
+    {
+        if (_renderer == null) return 0;
+        try
+        {
+            return _renderer.SetAction(actionType);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine(
+                $"[C3StudioGame] ChangeMotion '{actionType}': {ex.Message}");
+            return 0;
+        }
+    }
+
     /// <summary>
     /// Loads all <see cref="EffectDescriptor"/> slots as a single multi-model
     /// <see cref="C3Effect"/> and attaches it to the Body part's

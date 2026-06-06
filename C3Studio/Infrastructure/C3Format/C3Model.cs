@@ -235,7 +235,7 @@ public partial class C3Model
         // Returns null if FindPhy(name) is null; otherwise returns phy.Motion
         return FindPhy(name)?.Motion;
     }
-    public void SetVirtualMotion(C3Motion pMotion)
+    public void SetVirtualMotion(C3Motion pMotion, Matrix? matrix = null)
     {
         // 1. Safe Null/Bound Checking
         if (pMotion == null ||
@@ -263,7 +263,8 @@ public partial class C3Model
                 targetMotion.BoneMatrix[n] *= pMotion.BoneMatrix[0];
             }
         }
-        
+        if (matrix.HasValue)
+            ApplyWorldRotation(matrix);
 
         //// 3. Update Position Coords for all Mesh Parts
         //uint dwPhyNum = m_infoPart.p3DMesh.m_dwPhyNum;

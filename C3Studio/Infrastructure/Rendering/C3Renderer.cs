@@ -1,6 +1,8 @@
-using System.IO;
+using C3Studio.Core.Models;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
+using SharpDX.Win32;
+using System.IO;
 
 namespace C3Studio.Infrastructure.Rendering;
 
@@ -108,6 +110,12 @@ public sealed class C3Renderer : IDisposable
         _role.Calculate();
         _role.UpdateShapes();
         _role.UploadAllVertices();
+    }
+
+    public ulong SetAction(RoleActionType actionType)
+    {
+        if (_role == null) return 0;
+        return _role.SetAction(actionType);
     }
 
     // ── Update ────────────────────────────────────────────────────────────

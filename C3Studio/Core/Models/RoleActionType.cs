@@ -35,6 +35,7 @@ public enum RoleActionType
 
     WalkL = 110,
     WalkR = 111,
+    Action113 = 113,
     WalkL_Injured = 115,
     WalkR_Injured = 116,
     RunL = 120,
@@ -137,6 +138,7 @@ public enum RoleActionType
     PhysicalAttack_406 = 406,
     PhysicalAttack_407 = 407,
     PhysicalAttack_408 = 408,
+    PhysicalAttack_409 = 409,
 
     Puncture = 451,
     AirStrike = 452,
@@ -196,10 +198,29 @@ public enum RoleActionType
     ChargeUp_Begin = 630,
     ChargeUp_End = 631,
 
+    Action700 = 700,
+    Action701 = 701,
+    Action702 = 702,
+    Action703 = 703,
+    Action704 = 704,
+
+    Action711 = 711,
+    Action712 = 712,
+    Action713 = 713,
+
     TM_Fast_Shoot = 800,
     TM_Dispersion_Shoot = 801,
 
     SomethingMagical1 = 901,
     SomethingMagical2 = 902,
-    MagicalAttackCast = 903
+    MagicalAttackCast = 903,
+    
+    Action918 = 918,
+    Action919 = 919,
+    Action920 = 920,
+    Action921 = 921,
+    Action922 = 922,
+    Action923 = 923,
+    Action924 = 924
 }
+

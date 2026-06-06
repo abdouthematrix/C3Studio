@@ -2,6 +2,7 @@ using C3Studio.Core.Models;
 using C3Studio.Core.Services;
 using C3Studio.Infrastructure.Loading;
 using C3Studio.MonoGame;
+using SharpDX.Direct3D9;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -52,16 +53,16 @@ public class RoleViewerViewModel : ViewModelBase
 
     // ── Collections ───────────────────────────────────────────────────────
     public ObservableCollection<SocketBindingViewModel> AvailableSockets { get; } = new();
-    public ObservableCollection<MotionData> AvailableMotions { get; } = new();
+    public ObservableCollection<RoleActionType> AvailableMotions { get; } = new();
 
-    private MotionData? _selectedMotion;
-    public MotionData? SelectedMotion
+    private RoleActionType _selectedMotion;
+    public RoleActionType SelectedMotion
     {
         get => _selectedMotion;
         set
         {
-            if (Set(ref _selectedMotion, value) && value != null)
-                _game?.ChangeMotion(value.Path);
+            if (Set(ref _selectedMotion, value))
+                ChangeMotion(_selectedMotion);
         }
     }
 
@@ -177,7 +178,7 @@ public class RoleViewerViewModel : ViewModelBase
                     }
 
                     string label = p.PartType == RolePartType.Weapon
-                        ? $"[{p.Id}] Lvl {p.Level}" + (quality != "Normal" ? $" - {quality}" : "")
+                        ? $"[{p.Id}]" + (quality != "Normal" ? $" - {quality}" : "")
                         : $"[{p.Id}]";
 
                     var opt = new RolePartOption(p.Id, label, p.SubType, quality);
@@ -221,26 +222,65 @@ public class RoleViewerViewModel : ViewModelBase
         RefreshSlotParts(SelectedLook);
         RefreshSlotAvailability();
 
-        var standById = (ulong)(SelectedLook * 10_000_000L + (int)RoleActionType.StandBy);
-        var path = _gameData.ResolveMotion(standById);
-        if (path != null)
-        {
-            var m = new MotionData("StandBy", path);
-            AvailableMotions.Add(m);
-            SelectedMotion = m;
-        }
+
+        AvailableMotions.Add(RoleActionType.StandBy);
+        SelectedMotion = RoleActionType.StandBy;
 
         var basicActions = new[]
-        {
-            RoleActionType.WalkL, RoleActionType.WalkR, RoleActionType.RunL, RoleActionType.RunR,
-            RoleActionType.Jump, RoleActionType.Sit, RoleActionType.Attack0
-        };
+{   
+    RoleActionType.Rest1,            // 101
+    RoleActionType.StandBy_Injured,  // 105
+    RoleActionType.WalkL,            // 110
+    RoleActionType.WalkR,            // 111
+    RoleActionType.Action113,    // 113 (not defined, closest is WalkR_Injured=116, so this one is unmapped)
+    RoleActionType.RunL,             // 120
+    RoleActionType.RunR,             // 121
+    RoleActionType.Jump,             // 130
+    RoleActionType.JumpBack,         // 131
+    RoleActionType.JumpRun,          // 132
+    RoleActionType.JumpAtk,          // 140
+    RoleActionType.Sit,              // 250
+    RoleActionType.DodgePhysicalAttack, // 310
+    RoleActionType.HitPhysicalAttack,   // 320
+    RoleActionType.Bruise,              // 321
+    RoleActionType.Die,                 // 330
+    RoleActionType.DeadBody,            // 331
+    RoleActionType.Die1,                // 332
+    RoleActionType.DeadBody1,           // 333
+    RoleActionType.Die2,                // 334
+    RoleActionType.DeadBody2,           // 335
+    RoleActionType.Die3,                // 336
+    RoleActionType.DeadBody3,           // 337
+    RoleActionType.PhysicalAttack_401,  // 401
+    RoleActionType.PhysicalAttack_402,  // 402
+    RoleActionType.PhysicalAttack_403,  // 403
+    RoleActionType.PhysicalAttack_409,   
+    RoleActionType.Action700,
+    RoleActionType.Action701,
+    RoleActionType.Action702,
+    RoleActionType.Action703,
+    RoleActionType.Action704,
 
-        foreach (var action in basicActions)
-        {
-            var p = _gameData.ResolveMotion((ulong)(SelectedLook * 10_000_000L + (uint)action));
-            if (p != null) AvailableMotions.Add(new MotionData(action.ToString(), p));
-        }
+    RoleActionType.Action711,
+    RoleActionType.Action712,
+    RoleActionType.Action713,
+
+    RoleActionType.Action918,
+    RoleActionType.Action919,
+    RoleActionType.Action920,
+    RoleActionType.Action921,
+    RoleActionType.Action922,
+    RoleActionType.Action923,
+    RoleActionType.Action924,
+    RoleActionType.PhysicalAttack_401   // 931 (closest mapping to 401 group)
+};
+
+        foreach (var action in basicActions)        
+            AvailableMotions.Add(action);
+        //for (int i = 0; i < 999; i++)
+        //    if (i != (int)RoleActionType.StandBy)
+        //        AvailableMotions.Add((RoleActionType)i); 
+           
     }
 
     private void RefreshSlotAvailability()
@@ -273,8 +313,12 @@ public class RoleViewerViewModel : ViewModelBase
         if (descriptors.Count > 0)
         {
             _game.AttachToRole(slotName, descriptors);
-            if (slotName == "Armor" && SelectedMotion != null)
-                _game.ChangeMotion(SelectedMotion.Path);
+            if (slotName == "Mount")
+            {
+                SelectedMotion = RoleActionType.StandBy;
+                ChangeMotion(SelectedMotion);
+            }
+            ChangeMotion(SelectedMotion);
         }
     }
 
@@ -291,8 +335,13 @@ public class RoleViewerViewModel : ViewModelBase
 
         _game.AttachToRole(slotName, descriptors);
 
-        if (slotName == "Armor" && SelectedMotion != null)
-            _game.ChangeMotion(SelectedMotion.Path);
+        if (slotName == "Mount")
+        {
+            SelectedMotion = RoleActionType.StandBy;
+            ChangeMotion(SelectedMotion);
+        }
+        if (slotName == "Armor")
+            ChangeMotion(SelectedMotion);
     }
 
     public void ClearSlot(string slotName)
@@ -304,16 +353,22 @@ public class RoleViewerViewModel : ViewModelBase
             uint nakedLookId = (uint)(SelectedLook * 1_000_000);
             var descriptors = TryResolveItem(nakedLookId, "Armor");
 
-            if (descriptors.Count > 0)
-            {
+            if (descriptors.Count > 0)            
                 _game.AttachToRole("Armor", descriptors);
-                if (SelectedMotion != null) _game.ChangeMotion(SelectedMotion.Path);
-            }
         }
         else
-        {
             _game.DetachFromRole(slotName);
-        }
+        
+        ChangeMotion(SelectedMotion);
+    }
+
+    public void ChangeMotion(RoleActionType action)
+    {
+        if (_game == null) return;
+        var actionkey = _game.SetAction(action);
+        var path = _gameData.ResolveMotion((ulong)actionkey);
+        if (path != null)
+            _game?.ChangeMotion(path);
     }
 
     // ── Resolution Helpers ────────────────────────────────────────────────

@@ -385,7 +385,7 @@
                                                 FontSize="11"
                                                 FontWeight="SemiBold"
                                                 Foreground="{StaticResource Br.Gold}"
-                                                Text="{Binding Label}" />
+                                                Text="{Binding}" />
                                         </Border>
                                     </StackPanel>
                                 </DataTemplate>
