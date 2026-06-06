@@ -212,7 +212,7 @@ public class GameDataService : IGameDataService
             if (ulong.TryParse(stripped, out var key2) && MotionMap.TryGetValue(key2, out var p2))
                 return p2;
         }
-        if (s.Length >= 7)
+        if (s.Length == 7)
         {
             var stretched = s.Insert(4, "0");
             if (ulong.TryParse(stretched, out var key3) && MotionMap.TryGetValue(key3, out var p3))

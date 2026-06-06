@@ -23,8 +23,7 @@ public class RoleViewerViewModel : ViewModelBase
             { "Armor",   "" },
             { "Armet",   "v_armet" },
             { "RWeapon", "v_r_weapon" },
-            { "LWeapon", "v_l_weapon" },
-            { "Mount",   "v_mount" },
+            { "LWeapon", "v_l_weapon" },           
             { "Mantle",  "v_mantle" },
             { "Cape",    "v_back" },
             { "Misc",    "v_misc" },
@@ -106,7 +105,7 @@ public class RoleViewerViewModel : ViewModelBase
         ("Armet",   new[] { RolePartType.Armet, RolePartType.Head },   false),
         ("RWeapon", new[] { RolePartType.Weapon },                     true),
         ("LWeapon", new[] { RolePartType.Weapon },                     true),
-        ("Mount",   new[] { RolePartType.Mount },                      false),
+        ("Mount",   new[] { RolePartType.Mount },                      true),
         ("Mantle",  new[] { RolePartType.Cape },                       false),
         ("Cape",    new[] { RolePartType.Cape },                       false),
         ("Misc",    new[] { RolePartType.Misc },                       false),
@@ -222,7 +221,7 @@ public class RoleViewerViewModel : ViewModelBase
         RefreshSlotParts(SelectedLook);
         RefreshSlotAvailability();
 
-        var standById = (ulong)(lookId + (int)RoleActionType.StandBy);
+        var standById = (ulong)(SelectedLook * 10_000_000L + (int)RoleActionType.StandBy);
         var path = _gameData.ResolveMotion(standById);
         if (path != null)
         {
@@ -239,7 +238,7 @@ public class RoleViewerViewModel : ViewModelBase
 
         foreach (var action in basicActions)
         {
-            var p = _gameData.ResolveMotion((ulong)(lookId + (uint)action));
+            var p = _gameData.ResolveMotion((ulong)(SelectedLook * 10_000_000L + (uint)action));
             if (p != null) AvailableMotions.Add(new MotionData(action.ToString(), p));
         }
     }

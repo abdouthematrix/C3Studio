@@ -1065,12 +1065,12 @@ public class WorkspaceViewModel : ViewModelBase
                     (hairMeshes, hairTextures, hairRolePartIds, hairAsb, hairAdb) = BuildMeshArraysForRolePart(armet);
             }
 
-            TryAddMotion(motions, "StandBy", (ulong)(role.Look * 1_000_000 + (int)RoleActionType.StandBy));
+            TryAddMotion(motions, "StandBy", (ulong)(role.Look * 10_000_000L + (int)RoleActionType.StandBy));
             for (int i = 0; i < 999; i++)
             {
                 RoleActionType action = (RoleActionType)i;
                 string name = action.ToString();
-                ulong idBodyMotion = (ulong)(role.Look * 1_000_000 + (int)action);
+                ulong idBodyMotion = (ulong)(role.Look * 10_000_000L + (int)action);
                 TryAddMotion(motions, name, idBodyMotion);
             }
         }
@@ -1347,11 +1347,11 @@ public class WorkspaceViewModel : ViewModelBase
         {
             // Armor (and by extension Armet/Cape/Head/Misc/Pelvis/Spirit that share 3dmotion.ini)
             // use the look-based key: look * 1_000_000 + actionType
-            TryAddMotion(motions, "StandBy", (ulong)(part.Look * 1_000_000) + (int)RoleActionType.StandBy);
+            TryAddMotion(motions, "StandBy", (ulong)(part.Look * 10_000_000L) + (int)RoleActionType.StandBy);
             for (int i = 0; i < 999; i++)
             {
                 RoleActionType action = (RoleActionType)i;
-                TryAddMotion(motions, action.ToString(), (ulong)(part.Look * 1_000_000 + (int)action));
+                TryAddMotion(motions, action.ToString(), (ulong)(part.Look * 10_000_000L + (int)action));
             }
         }
         else if (part.PartType == RolePartType.Armet)
