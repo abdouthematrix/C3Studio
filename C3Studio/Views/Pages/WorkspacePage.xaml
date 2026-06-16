@@ -600,6 +600,11 @@
                             <StackPanel>
                                 <CheckBox
                                     Margin="0,0,0,6"
+                                    Content="Show Bones"
+                                    IsChecked="{Binding ShowBones, Mode=TwoWay}"
+                                    Style="{StaticResource DarkCheckBox}" />
+                                <CheckBox
+                                    Margin="0,0,0,6"
                                     Content="Show Bounding Box"
                                     IsChecked="{Binding ShowBoundingBox, Mode=TwoWay}"
                                     Style="{StaticResource DarkCheckBox}" />

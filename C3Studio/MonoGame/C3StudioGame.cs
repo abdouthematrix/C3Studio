@@ -14,16 +14,6 @@ namespace C3Studio.MonoGame;
 
 public class C3StudioGame : WpfGame
 {
-    private VertexPositionColor[] _axisVerts;
-    private VertexPositionColor[] _bboxVerts;
-    public bool ShowBoundingBox { get; set; }
-    public bool ShowAxisGizmo { get; set; }
-    public bool IsOrthographic
-    {
-        get => _camera != null && _camera.IsOrthographic;
-        set { if (_camera != null) _camera.IsOrthographic = value; }
-    }
-
     // ── DI / services ─────────────────────────────────────────────────────
     private IAssetFileService? _assetService;
     public IAssetFileService? AssetService
@@ -61,11 +51,30 @@ public class C3StudioGame : WpfGame
     public void StepFrame(int delta) => _renderer?.StepFrame(delta);
     public void ResetCamera() => _camera.Reset();
 
+    // ── Bone Visibility Options ───────────────────────────────────────────
+    private bool _showBones = false;
+    public bool ShowBones
+    {
+        get => _showBones;
+        set => _showBones = value;
+    }
+    private VertexPositionColor[] _axisVerts;
+    private VertexPositionColor[] _bboxVerts;
+    private List<VertexPositionColor> _boneVertices = new();
+    public bool ShowBoundingBox { get; set; }
+    public bool ShowAxisGizmo { get; set; }
+    public bool IsOrthographic
+    {
+        get => _camera != null && _camera.IsOrthographic;
+        set { if (_camera != null) _camera.IsOrthographic = value; }
+    }
+
     // ── XNA services ──────────────────────────────────────────────────────
     private IGraphicsDeviceService? _gdService;
     private C3Renderer? _renderer;
     private C3AssetLoader? _loader;
     private BasicEffect? _gridEffect;
+    private BasicEffect? _boneEffect; // Dedicated bone overlay effect
     private WpfMouse? _mouse;
     private WpfKeyboard? _keyboard;
 
@@ -90,20 +99,29 @@ public class C3StudioGame : WpfGame
         C3Texture.Initialize(GraphicsDevice);
         _loader = new C3AssetLoader(GraphicsDevice, _assetService);
         _renderer = new C3Renderer(GraphicsDevice);
+
         _gridEffect = new BasicEffect(GraphicsDevice)
         {
             VertexColorEnabled = true,
             LightingEnabled = false,
             TextureEnabled = false,
-        };       
-        BuildGrid(halfSize: 20, step: 50f);
+        };
+
+        _boneEffect = new BasicEffect(GraphicsDevice)
+        {
+            VertexColorEnabled = true,
+            LightingEnabled = false,
+            TextureEnabled = false,
+        };
 
         _axisVerts = new VertexPositionColor[]
-        {
+       {
             new VertexPositionColor(Vector3.Zero, Color.Red),   new VertexPositionColor(new Vector3(30f, 0f, 0f), Color.Red),
             new VertexPositionColor(Vector3.Zero, Color.Green), new VertexPositionColor(new Vector3(0f, 30f, 0f), Color.Green),
             new VertexPositionColor(Vector3.Zero, Color.Blue),  new VertexPositionColor(new Vector3(0f, 0f, 30f), Color.Blue)
-        };
+       };
+
+        BuildGrid(halfSize: 20, step: 50f);
     }
 
     // ── Update / Draw ─────────────────────────────────────────────────────
@@ -133,6 +151,11 @@ public class C3StudioGame : WpfGame
         DrawGrid(view, projection);
         _renderer?.Draw(view, projection);
 
+        // Render bones on top of meshes if enabled
+        if (_showBones)
+        {
+            DrawBones(view, projection);
+        }
         if (ShowAxisGizmo) DrawAxisGizmo(view, projection);
         if (ShowBoundingBox) DrawBoundingBox(view, projection);
 
@@ -390,7 +413,7 @@ public class C3StudioGame : WpfGame
                 PrimitiveType.LineList, _gridVerts, 0, _gridVerts.Length / 2);
         }
     }
-    
+
     private void DrawAxisGizmo(Matrix view, Matrix projection)
     {
         if (_axisVerts == null || _gridEffect == null) return;
@@ -432,11 +455,220 @@ public class C3StudioGame : WpfGame
         }
     }
 
+    // ── Bone Calculation & Primitives Pass ───────────────────────────────
+    private void DrawBones(Matrix view, Matrix projection)
+    {
+        // Updated property checks based on the modern API
+        if (_renderer?.Role?.Body?.Model?.Phys == null || _boneEffect == null)
+            return;
+
+        _boneVertices.Clear();
+        Matrix worldTransform = Matrix.Identity; // Standard reference floor transformation
+
+        foreach (var c3Phy in _renderer.Role.Body.Model.Phys)
+        {
+            if (c3Phy?.Motion == null)
+                continue;
+
+            int boneCount = c3Phy.Motion.BoneCount;
+            BoneData[] bones = new BoneData[boneCount];
+
+            // 1. Calculate transforms and flip Z to match the mesh exactly
+            for (int b = 0; b < boneCount; b++)
+            {
+                // Replicate Calculate() exact bone matrix formula
+                Matrix rawBone = c3Phy.InitMatrix * c3Phy.Motion.GetBoneMatrix(b) * c3Phy.Motion.BoneMatrix[b];
+
+                // Extract the unflipped position and orientation vectors
+                Vector3 pos = rawBone.Translation;
+                Vector3 dir = rawBone.Up;
+                Vector3 right = rawBone.Right;
+                Vector3 forward = rawBone.Forward;
+
+                // Apply the D3D left-hand → MonoGame right-hand mirror explicitly
+                pos.Z = -pos.Z;
+                dir.Z = -dir.Z;
+                right.Z = -right.Z;
+                forward.Z = -forward.Z;
+
+                bones[b] = new BoneData
+                {
+                    Position = Vector3.Transform(pos, worldTransform),
+                    Direction = Vector3.TransformNormal(dir, worldTransform),
+                    Right = Vector3.TransformNormal(right, worldTransform),
+                    Forward = Vector3.TransformNormal(forward, worldTransform),
+                    Length = 1.0f
+                };
+            }
+
+            // 2. Estimate length variants matching proximity boundaries
+            for (int b = 0; b < boneCount; b++)
+            {
+                float minChildDist = float.MaxValue;
+                bool hasChild = false;
+
+                for (int c = 0; c < boneCount; c++)
+                {
+                    if (c != b)
+                    {
+                        float dist = Vector3.Distance(bones[b].Position, bones[c].Position);
+                        if (dist > 0.01f && dist < minChildDist)
+                        {
+                            minChildDist = dist;
+                            hasChild = true;
+                        }
+                    }
+                }
+
+                bones[b].Length = hasChild ? minChildDist * 0.5f : 2.0f;
+            }
+
+            // 3. Build volumetric primitives
+            Color boneColor = new Color(100, 150, 255);
+            Color boneOutline = new Color(50, 100, 200);
+
+            for (int b = 0; b < boneCount; b++)
+            {
+                DrawOctahedralBone(bones[b], boneColor, boneOutline);
+            }
+
+            // 4. Generate skeletal linking wires
+            Color connectionColor = Color.White * 0.5f;
+            for (int b = 1; b < boneCount; b++)
+            {
+                float minDist = float.MaxValue;
+                int parentIdx = 0;
+
+                for (int p = 0; p < b; p++)
+                {
+                    float dist = Vector3.Distance(bones[b].Position, bones[p].Position);
+                    if (dist < minDist)
+                    {
+                        minDist = dist;
+                        parentIdx = p;
+                    }
+                }
+
+                if (minDist < 10.0f)
+                {
+                    _boneVertices.Add(new VertexPositionColor(bones[b].Position, connectionColor));
+                    _boneVertices.Add(new VertexPositionColor(bones[parentIdx].Position, connectionColor));
+                }
+            }
+        }
+
+        if (_boneVertices.Count == 0)
+            return;
+
+        // Apply matrix state transformations
+        _boneEffect.View = view;
+        _boneEffect.Projection = projection;
+        _boneEffect.World = Matrix.Identity;
+
+        GraphicsDevice.BlendState = BlendState.AlphaBlend;
+        // DepthStencilState.None allows bone viewing entirely through the character mesh
+        GraphicsDevice.DepthStencilState = DepthStencilState.None;
+        GraphicsDevice.RasterizerState = RasterizerState.CullNone;
+
+        foreach (var pass in _boneEffect.CurrentTechnique.Passes)
+        {
+            pass.Apply();
+            GraphicsDevice.DrawUserPrimitives(
+                PrimitiveType.LineList, _boneVertices.ToArray(), 0, _boneVertices.Count / 2);
+        }
+    }
+
+    private void DrawOctahedralBone(BoneData bone, Color fillColor, Color outlineColor)
+    {
+        Vector3 head = bone.Position;
+
+        // Primary bone direction (usually Y/Up in 3D animation space)
+        Vector3 boneDir = bone.Direction;
+        if (boneDir.LengthSquared() > 0.001f)
+            boneDir.Normalize();
+        else
+            boneDir = Vector3.Up;
+
+        Vector3 tail = head + boneDir * bone.Length;
+
+        // Local right axis safely extracted from the mirror
+        Vector3 right = bone.Right;
+        if (right.LengthSquared() > 0.001f)
+            right.Normalize();
+        else
+            right = Vector3.Right;
+
+        // Reconstruct forward using standard right-handed cross product
+        Vector3 forward = Vector3.Cross(right, boneDir);
+        if (forward.LengthSquared() > 0.001f)
+            forward.Normalize();
+        else
+            forward = Vector3.Forward;
+
+        // Re-cross right to ensure the octahedral base is perfectly square
+        right = Vector3.Cross(boneDir, forward);
+
+        float width = bone.Length * 0.15f;
+        Vector3 mid = (head + tail) * 0.5f;
+
+        Vector3[] verts = new Vector3[6]
+        {
+        head,
+        mid + right * width,
+        mid + forward * width,
+        mid - right * width,
+        mid - forward * width,
+        tail
+        };
+
+        int[][] faces = new int[][]
+        {
+        new int[] {0, 1, 2}, new int[] {0, 2, 3},
+        new int[] {0, 3, 4}, new int[] {0, 4, 1},
+        new int[] {5, 2, 1}, new int[] {5, 3, 2},
+        new int[] {5, 4, 3}, new int[] {5, 1, 4}
+        };
+
+        foreach (var face in faces)
+        {
+            _boneVertices.Add(new VertexPositionColor(verts[face[0]], fillColor));
+            _boneVertices.Add(new VertexPositionColor(verts[face[1]], fillColor));
+
+            _boneVertices.Add(new VertexPositionColor(verts[face[1]], fillColor));
+            _boneVertices.Add(new VertexPositionColor(verts[face[2]], fillColor));
+
+            _boneVertices.Add(new VertexPositionColor(verts[face[2]], fillColor));
+            _boneVertices.Add(new VertexPositionColor(verts[face[0]], fillColor));
+        }
+
+        int[][] edges = new int[][]
+        {
+        new int[] {0, 1}, new int[] {0, 2}, new int[] {0, 3}, new int[] {0, 4},
+        new int[] {1, 2}, new int[] {2, 3}, new int[] {3, 4}, new int[] {4, 1},
+        new int[] {5, 1}, new int[] {5, 2}, new int[] {5, 3}, new int[] {5, 4}
+        };
+
+        foreach (var edge in edges)
+        {
+            _boneVertices.Add(new VertexPositionColor(verts[edge[0]], outlineColor));
+            _boneVertices.Add(new VertexPositionColor(verts[edge[1]], outlineColor));
+        }
+    }
+
+    private struct BoneData
+    {
+        public Vector3 Position { get; set; }
+        public Vector3 Direction { get; set; }  // The bone's primary axis (Up)
+        public Vector3 Right { get; set; }      // Orthogonal axis
+        public Vector3 Forward { get; set; }    // Orthogonal axis
+        public float Length { get; set; }
+    }
+
     // ── Camera auto-fit ───────────────────────────────────────────────────
     private void AutoFitCamera(C3Role role)
     {
-        Vector3 min = new Vector3(float.MaxValue);
-        Vector3 max = new Vector3(float.MinValue);
+        var min = new Vector3(float.MaxValue);
+        var max = new Vector3(float.MinValue);
         bool any = false;
 
         // 1. Calculate boundaries strictly on the Body (ignores weapons/capes so camera doesn't zoom too far out)
@@ -470,11 +702,12 @@ public class C3StudioGame : WpfGame
                 }
             }
         }
+
         if (!any) { _camera.Reset(); return; }
 
         // Rebuild wireframe bounding box corners (12 lines / 24 vertices)
         Color bboxColor = Color.Yellow; // Choose your preferred debug color
-        _bboxVerts = new VertexPositionColor[]  
+        _bboxVerts = new VertexPositionColor[]
         {  
             // Bottom face loops
             new VertexPositionColor(new Vector3(min.X, min.Y, min.Z), bboxColor), new VertexPositionColor(new Vector3(max.X, min.Y, min.Z), bboxColor),
@@ -509,6 +742,7 @@ public class C3StudioGame : WpfGame
     {
         _renderer?.Dispose();
         _gridEffect?.Dispose();
+        _boneEffect?.Dispose();
         C3Texture.Texture_UnloadAll();
         base.UnloadContent();
     }

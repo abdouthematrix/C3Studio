@@ -132,6 +132,19 @@ public class WorkspaceViewModel : ViewModelBase
         get => _fps;
         set { if (Set(ref _fps, value)) _game?.SetFps(value); }
     }
+    private bool _showBones;
+    public bool ShowBones
+    {
+        get => _showBones;
+        set
+        {
+            if (Set(ref _showBones, value) && _game != null)
+            {
+                _game.ShowBones = value;
+            }
+        }
+    }
+    
 
     private bool _showBoundingBox;
     public bool ShowBoundingBox
@@ -389,6 +402,7 @@ public class WorkspaceViewModel : ViewModelBase
         _game.SetFps(_fps);
         if (_game != null)
         {
+            _game.ShowBones = ShowBones;
             _game.ShowBoundingBox = ShowBoundingBox;
             _game.ShowAxisGizmo = ShowAxisGizmo;
             _game.IsOrthographic = IsOrthographic;
