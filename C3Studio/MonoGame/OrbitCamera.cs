@@ -8,6 +8,7 @@ namespace C3Studio.Rendering;
 /// </summary>
 public sealed class OrbitCamera
 {
+    public bool IsOrthographic { get; set; }
     // Orbit state
     private float _yaw = MathHelper.Pi;   // start facing -Z
     private float _pitch = -0.4f;            // slight downward tilt
@@ -76,9 +77,21 @@ public sealed class OrbitCamera
     public Matrix View =>
         Matrix.CreateLookAt(Position, _target, Vector3.Up);
 
-    public Matrix Projection(float aspectRatio) =>
-        Matrix.CreatePerspectiveFieldOfView(
-            FieldOfView, aspectRatio, NearPlane, FarPlane);
+    public Matrix Projection(float aspectRatio)
+    {
+        if (IsOrthographic)
+        {
+            // Keeps apparent model size identical to perspective view at the current radius
+            float halfHeight = Radius * (float)Math.Tan(FieldOfView / 2.0);
+            float halfWidth = halfHeight * aspectRatio;
+
+            return Matrix.CreateOrthographicOffCenter(-halfWidth, halfWidth, -halfHeight, halfHeight, NearPlane, FarPlane);
+        }
+        else
+        {
+            return Matrix.CreatePerspectiveFieldOfView(FieldOfView, aspectRatio, NearPlane, FarPlane);
+        }
+    }
 
     // Expose radius so ViewerGame can auto-fit the model
     public float Radius { get => _radius; set => _radius = Math.Clamp(value, MinRadius, MaxRadius); }

@@ -133,6 +133,45 @@ public class WorkspaceViewModel : ViewModelBase
         set { if (Set(ref _fps, value)) _game?.SetFps(value); }
     }
 
+    private bool _showBoundingBox;
+    public bool ShowBoundingBox
+    {
+        get => _showBoundingBox;
+        set
+        {
+            if (Set(ref _showBoundingBox, value) && _game != null)
+            {
+                _game.ShowBoundingBox = value;
+            }
+        }
+    }
+
+    private bool _showAxisGizmo;
+    public bool ShowAxisGizmo
+    {
+        get => _showAxisGizmo;
+        set
+        {
+            if (Set(ref _showAxisGizmo, value) && _game != null)
+            {
+                _game.ShowAxisGizmo = value;
+            }
+        }
+    }
+
+    private bool _isOrthographic;
+    public bool IsOrthographic
+    {
+        get => _isOrthographic;
+        set
+        {
+            if (Set(ref _isOrthographic, value) && _game != null)
+            {
+                _game.IsOrthographic = value;
+            }
+        }
+    }
+
     public AssetNode? SelectedNode
     {
         get => _selectedNode;
@@ -348,6 +387,12 @@ public class WorkspaceViewModel : ViewModelBase
         _game.FrameChanged += OnFrameChanged;
         _game.ModelLoaded += OnModelLoaded;
         _game.SetFps(_fps);
+        if (_game != null)
+        {
+            _game.ShowBoundingBox = ShowBoundingBox;
+            _game.ShowAxisGizmo = ShowAxisGizmo;
+            _game.IsOrthographic = IsOrthographic;
+        }
     }
     private void OnModelLoaded()
     {

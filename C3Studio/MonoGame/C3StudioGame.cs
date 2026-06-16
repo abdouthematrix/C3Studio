@@ -14,6 +14,16 @@ namespace C3Studio.MonoGame;
 
 public class C3StudioGame : WpfGame
 {
+    private VertexPositionColor[] _axisVerts;
+    private VertexPositionColor[] _bboxVerts;
+    public bool ShowBoundingBox { get; set; }
+    public bool ShowAxisGizmo { get; set; }
+    public bool IsOrthographic
+    {
+        get => _camera != null && _camera.IsOrthographic;
+        set { if (_camera != null) _camera.IsOrthographic = value; }
+    }
+
     // ── DI / services ─────────────────────────────────────────────────────
     private IAssetFileService? _assetService;
     public IAssetFileService? AssetService
@@ -85,8 +95,15 @@ public class C3StudioGame : WpfGame
             VertexColorEnabled = true,
             LightingEnabled = false,
             TextureEnabled = false,
-        };
+        };       
         BuildGrid(halfSize: 20, step: 50f);
+
+        _axisVerts = new VertexPositionColor[]
+        {
+            new VertexPositionColor(Vector3.Zero, Color.Red),   new VertexPositionColor(new Vector3(30f, 0f, 0f), Color.Red),
+            new VertexPositionColor(Vector3.Zero, Color.Green), new VertexPositionColor(new Vector3(0f, 30f, 0f), Color.Green),
+            new VertexPositionColor(Vector3.Zero, Color.Blue),  new VertexPositionColor(new Vector3(0f, 0f, 30f), Color.Blue)
+        };
     }
 
     // ── Update / Draw ─────────────────────────────────────────────────────
@@ -115,6 +132,9 @@ public class C3StudioGame : WpfGame
 
         DrawGrid(view, projection);
         _renderer?.Draw(view, projection);
+
+        if (ShowAxisGizmo) DrawAxisGizmo(view, projection);
+        if (ShowBoundingBox) DrawBoundingBox(view, projection);
 
         base.Draw(gameTime);
     }
@@ -370,12 +390,53 @@ public class C3StudioGame : WpfGame
                 PrimitiveType.LineList, _gridVerts, 0, _gridVerts.Length / 2);
         }
     }
+    
+    private void DrawAxisGizmo(Matrix view, Matrix projection)
+    {
+        if (_axisVerts == null || _gridEffect == null) return;
+
+        _gridEffect.View = view;
+        _gridEffect.Projection = projection;
+        _gridEffect.World = Matrix.Identity;
+        _gridEffect.VertexColorEnabled = true;
+        _gridEffect.TextureEnabled = false;
+        _gridEffect.LightingEnabled = false;
+        GraphicsDevice.BlendState = BlendState.AlphaBlend;
+        GraphicsDevice.DepthStencilState = DepthStencilState.Default;
+        GraphicsDevice.RasterizerState = RasterizerState.CullNone;
+
+        foreach (var pass in _gridEffect.CurrentTechnique.Passes)
+        {
+            pass.Apply();
+            GraphicsDevice.DrawUserPrimitives(PrimitiveType.LineList, _axisVerts, 0, _axisVerts.Length / 2);
+        }
+    }
+    private void DrawBoundingBox(Matrix view, Matrix projection)
+    {
+        if (_bboxVerts == null || _gridEffect == null) return;
+
+        _gridEffect.View = view;
+        _gridEffect.Projection = projection;
+        _gridEffect.World = Matrix.Identity;
+        _gridEffect.VertexColorEnabled = true;
+        _gridEffect.TextureEnabled = false;
+        _gridEffect.LightingEnabled = false;
+        GraphicsDevice.BlendState = BlendState.AlphaBlend;
+        GraphicsDevice.DepthStencilState = DepthStencilState.Default;
+        GraphicsDevice.RasterizerState = RasterizerState.CullNone;
+
+        foreach (var pass in _gridEffect.CurrentTechnique.Passes)
+        {
+            pass.Apply();
+            GraphicsDevice.DrawUserPrimitives(PrimitiveType.LineList, _bboxVerts, 0, _bboxVerts.Length / 2);
+        }
+    }
 
     // ── Camera auto-fit ───────────────────────────────────────────────────
     private void AutoFitCamera(C3Role role)
     {
-        var min = new Vector3(float.MaxValue);
-        var max = new Vector3(float.MinValue);
+        Vector3 min = new Vector3(float.MaxValue);
+        Vector3 max = new Vector3(float.MinValue);
         bool any = false;
 
         // 1. Calculate boundaries strictly on the Body (ignores weapons/capes so camera doesn't zoom too far out)
@@ -409,14 +470,39 @@ public class C3StudioGame : WpfGame
                 }
             }
         }
-
         if (!any) { _camera.Reset(); return; }
+
+        // Rebuild wireframe bounding box corners (12 lines / 24 vertices)
+        Color bboxColor = Color.Yellow; // Choose your preferred debug color
+        _bboxVerts = new VertexPositionColor[]  
+        {  
+            // Bottom face loops
+            new VertexPositionColor(new Vector3(min.X, min.Y, min.Z), bboxColor), new VertexPositionColor(new Vector3(max.X, min.Y, min.Z), bboxColor),
+            new VertexPositionColor(new Vector3(max.X, min.Y, min.Z), bboxColor), new VertexPositionColor(new Vector3(max.X, max.Y, min.Z), bboxColor),
+            new VertexPositionColor(new Vector3(max.X, max.Y, min.Z), bboxColor), new VertexPositionColor(new Vector3(min.X, max.Y, min.Z), bboxColor),
+            new VertexPositionColor(new Vector3(min.X, max.Y, min.Z), bboxColor), new VertexPositionColor(new Vector3(min.X, min.Y, min.Z), bboxColor),
+            
+            // Top face loops
+            
+            new VertexPositionColor(new Vector3(min.X, min.Y, max.Z), bboxColor), new VertexPositionColor(new Vector3(max.X, min.Y, max.Z), bboxColor),
+            new VertexPositionColor(new Vector3(max.X, min.Y, max.Z), bboxColor), new VertexPositionColor(new Vector3(max.X, max.Y, max.Z), bboxColor),
+            new VertexPositionColor(new Vector3(max.X, max.Y, max.Z), bboxColor), new VertexPositionColor(new Vector3(min.X, max.Y, max.Z), bboxColor),
+            new VertexPositionColor(new Vector3(min.X, max.Y, max.Z), bboxColor), new VertexPositionColor(new Vector3(min.X, min.Y, max.Z), bboxColor),
+            
+            // Vertical pillars
+            
+            new VertexPositionColor(new Vector3(min.X, min.Y, min.Z), bboxColor), new VertexPositionColor(new Vector3(min.X, min.Y, max.Z), bboxColor),
+            new VertexPositionColor(new Vector3(max.X, min.Y, min.Z), bboxColor), new VertexPositionColor(new Vector3(max.X, min.Y, max.Z), bboxColor),
+            new VertexPositionColor(new Vector3(max.X, max.Y, min.Z), bboxColor), new VertexPositionColor(new Vector3(max.X, max.Y, max.Z), bboxColor),
+            new VertexPositionColor(new Vector3(min.X, max.Y, min.Z), bboxColor), new VertexPositionColor(new Vector3(min.X, max.Y, max.Z), bboxColor)
+        };
 
         var center = (min + max) * 0.5f;
         float diagonal = Vector3.Distance(min, max);
         float orbit = Math.Clamp(diagonal * 1.5f, 40f, 800f);
         _camera.FitTo(center, orbit);
     }
+
 
     // ── Lifecycle ─────────────────────────────────────────────────────────
     protected override void UnloadContent()

@@ -583,6 +583,35 @@
                                     Command="{Binding ResetCameraCommand}"
                                     Content="Reset Camera"
                                     Style="{StaticResource GhostButton}" />
+
+
+                            </StackPanel>
+                        </Border>
+
+                        <TextBlock
+                            Margin="0,8,0,10"
+                            Style="{StaticResource SectionLabel}"
+                            Text="DEBUG VIEW" />
+
+                        <Border
+                            Margin="0,0,0,12"
+                            Padding="14,10"
+                            Style="{StaticResource Card}">
+                            <StackPanel>
+                                <CheckBox
+                                    Margin="0,0,0,6"
+                                    Content="Show Bounding Box"
+                                    IsChecked="{Binding ShowBoundingBox, Mode=TwoWay}"
+                                    Style="{StaticResource DarkCheckBox}" />
+                                <CheckBox
+                                    Margin="0,0,0,6"
+                                    Content="Show Axis Gizmo"
+                                    IsChecked="{Binding ShowAxisGizmo, Mode=TwoWay}"
+                                    Style="{StaticResource DarkCheckBox}" />
+                                <CheckBox
+                                    Content="Orthographic View"
+                                    IsChecked="{Binding IsOrthographic, Mode=TwoWay}"
+                                    Style="{StaticResource DarkCheckBox}" />
                             </StackPanel>
                         </Border>
 
