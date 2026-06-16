@@ -58,6 +58,12 @@ public class C3StudioGame : WpfGame
         get => _showBones;
         set => _showBones = value;
     }
+    private bool _showSpiderweb = false;
+    public bool ShowSpiderweb
+    {
+        get => _showSpiderweb;
+        set => _showSpiderweb = value;
+    } 
     private VertexPositionColor[] _axisVerts;
     private VertexPositionColor[] _bboxVerts;
     private List<VertexPositionColor> _boneVertices = new();
@@ -152,10 +158,7 @@ public class C3StudioGame : WpfGame
         _renderer?.Draw(view, projection);
 
         // Render bones on top of meshes if enabled
-        if (_showBones)
-        {
-            DrawBones(view, projection);
-        }
+        if (_showBones) DrawBones(view, projection);        
         if (ShowAxisGizmo) DrawAxisGizmo(view, projection);
         if (ShowBoundingBox) DrawBoundingBox(view, projection);
 
@@ -458,101 +461,140 @@ public class C3StudioGame : WpfGame
     // ── Bone Calculation & Primitives Pass ───────────────────────────────
     private void DrawBones(Matrix view, Matrix projection)
     {
-        // Updated property checks based on the modern API
-        if (_renderer?.Role?.Body?.Model?.Phys == null || _boneEffect == null)
+        if (_renderer?.Role == null || _boneEffect == null)
             return;
 
         _boneVertices.Clear();
-        Matrix worldTransform = Matrix.Identity; // Standard reference floor transformation
+        Matrix worldTransform = Matrix.Identity;
 
-        foreach (var c3Phy in _renderer.Role.Body.Model.Phys)
+        // Gather all parts (Body + any attached equipment/weapons/costumes)
+        var allParts = _renderer.Role.AllParts();
+
+        foreach (var part in allParts)
         {
-            if (c3Phy?.Motion == null)
-                continue;
+            if (part?.Model?.Phys == null) continue;
 
-            int boneCount = c3Phy.Motion.BoneCount;
-            BoneData[] bones = new BoneData[boneCount];
-
-            // 1. Calculate transforms and flip Z to match the mesh exactly
-            for (int b = 0; b < boneCount; b++)
+            foreach (var c3Phy in part.Model.Phys)
             {
-                // Replicate Calculate() exact bone matrix formula
-                Matrix rawBone = c3Phy.InitMatrix * c3Phy.Motion.GetBoneMatrix(b) * c3Phy.Motion.BoneMatrix[b];
+                if (c3Phy?.Motion == null || c3Phy.SourceVertices == null || c3Phy.OutputVertices == null)
+                    continue;
 
-                // Extract the unflipped position and orientation vectors
-                Vector3 pos = rawBone.Translation;
-                Vector3 dir = rawBone.Up;
-                Vector3 right = rawBone.Right;
-                Vector3 forward = rawBone.Forward;
+                int boneCount = c3Phy.Motion.BoneCount;
+                BoneData[] bones = new BoneData[boneCount];
 
-                // Apply the D3D left-hand → MonoGame right-hand mirror explicitly
-                pos.Z = -pos.Z;
-                dir.Z = -dir.Z;
-                right.Z = -right.Z;
-                forward.Z = -forward.Z;
-
-                bones[b] = new BoneData
+                // 1. Calculate transforms and flip Z to match your Calculate() method exactly
+                for (int b = 0; b < boneCount; b++)
                 {
-                    Position = Vector3.Transform(pos, worldTransform),
-                    Direction = Vector3.TransformNormal(dir, worldTransform),
-                    Right = Vector3.TransformNormal(right, worldTransform),
-                    Forward = Vector3.TransformNormal(forward, worldTransform),
-                    Length = 1.0f
-                };
-            }
+                    Matrix rawBone = c3Phy.InitMatrix * c3Phy.Motion.GetBoneMatrix(b) * c3Phy.Motion.BoneMatrix[b];
 
-            // 2. Estimate length variants matching proximity boundaries
-            for (int b = 0; b < boneCount; b++)
-            {
-                float minChildDist = float.MaxValue;
-                bool hasChild = false;
+                    Vector3 pos = rawBone.Translation;
+                    Vector3 dir = rawBone.Up;
+                    Vector3 right = rawBone.Right;
+                    Vector3 forward = rawBone.Forward;
 
-                for (int c = 0; c < boneCount; c++)
-                {
-                    if (c != b)
+                    // Left-Hand (D3D) to Right-Hand (MonoGame) explicit reflection conversion
+                    pos.Z = -pos.Z;
+                    dir.Z = -dir.Z;
+                    right.Z = -right.Z;
+                    forward.Z = -forward.Z;
+
+                    bones[b] = new BoneData
                     {
-                        float dist = Vector3.Distance(bones[b].Position, bones[c].Position);
-                        if (dist > 0.01f && dist < minChildDist)
+                        Position = Vector3.Transform(pos, worldTransform),
+                        Direction = Vector3.TransformNormal(dir, worldTransform),
+                        Right = Vector3.TransformNormal(right, worldTransform),
+                        Forward = Vector3.TransformNormal(forward, worldTransform),
+                        Length = 1.0f
+                    };
+                }
+
+                // 2. Estimate bone lengths based on proximity boundaries
+                for (int b = 0; b < boneCount; b++)
+                {
+                    float minChildDist = float.MaxValue;
+                    bool hasChild = false;
+
+                    for (int c = 0; c < boneCount; c++)
+                    {
+                        if (c != b)
                         {
-                            minChildDist = dist;
-                            hasChild = true;
+                            float dist = Vector3.Distance(bones[b].Position, bones[c].Position);
+                            if (dist > 0.01f && dist < minChildDist)
+                            {
+                                minChildDist = dist;
+                                hasChild = true;
+                            }
                         }
                     }
+                    bones[b].Length = hasChild ? minChildDist * 0.5f : 2.0f;
                 }
 
-                bones[b].Length = hasChild ? minChildDist * 0.5f : 2.0f;
-            }
+                // 3. Render Volumetric Octahedral Primitives
+                Color boneColor = new Color(100, 150, 255);
+                Color boneOutline = new Color(50, 100, 200);
 
-            // 3. Build volumetric primitives
-            Color boneColor = new Color(100, 150, 255);
-            Color boneOutline = new Color(50, 100, 200);
-
-            for (int b = 0; b < boneCount; b++)
-            {
-                DrawOctahedralBone(bones[b], boneColor, boneOutline);
-            }
-
-            // 4. Generate skeletal linking wires
-            Color connectionColor = Color.White * 0.5f;
-            for (int b = 1; b < boneCount; b++)
-            {
-                float minDist = float.MaxValue;
-                int parentIdx = 0;
-
-                for (int p = 0; p < b; p++)
+                for (int b = 0; b < boneCount; b++)
                 {
-                    float dist = Vector3.Distance(bones[b].Position, bones[p].Position);
-                    if (dist < minDist)
+                    DrawOctahedralBone(bones[b], boneColor, boneOutline);
+                }
+
+                // 4. Generate Rigid Skeleton Hierarchy Links (Wireframe lines between bones)
+                Color connectionColor = Color.White * 0.35f;
+                for (int b = 1; b < boneCount; b++)
+                {
+                    float minDist = float.MaxValue;
+                    int parentIdx = 0;
+
+                    for (int p = 0; p < b; p++)
                     {
-                        minDist = dist;
-                        parentIdx = p;
+                        float dist = Vector3.Distance(bones[b].Position, bones[p].Position);
+                        if (dist < minDist)
+                        {
+                            minDist = dist;
+                            parentIdx = p;
+                        }
+                    }
+
+                    if (minDist < 10.0f)
+                    {
+                        _boneVertices.Add(new VertexPositionColor(bones[b].Position, connectionColor));
+                        _boneVertices.Add(new VertexPositionColor(bones[parentIdx].Position, connectionColor));
                     }
                 }
 
-                if (minDist < 10.0f)
+                // 5. THE SPIDERWEB OVERLAY: Link SourceVertices directly to their assigned bones
+                if (_showSpiderweb)
                 {
-                    _boneVertices.Add(new VertexPositionColor(bones[b].Position, connectionColor));
-                    _boneVertices.Add(new VertexPositionColor(bones[parentIdx].Position, connectionColor));
+                    // Faint transparent yellow/orange keeps the view clean without blinding you
+                    Color webColor = Color.Orange * 0.12f;
+
+                    int maxVertsToDraw = Math.Min(c3Phy.SourceVertices.Count, c3Phy.OutputVertices.Count);
+                    for (int v = 0; v < maxVertsToDraw; v++)
+                    {
+                        var sv = c3Phy.SourceVertices[v];
+
+                        // Mirroring your exact rigid weight binding loop logic
+                        for (int l = 0; l < 4; l++) // Assuming C3Constants.BoneMax is 4
+                        {
+                            if (sv.BoneWeight[l] > 0f)
+                            {
+                                if (sv.Positions.Length > 0 && l < sv.BoneIndex.Length)
+                                {
+                                    int boneIdx = sv.BoneIndex[l];
+                                    if (boneIdx >= 0 && boneIdx < boneCount)
+                                    {
+                                        Vector3 bonePos = bones[boneIdx].Position;
+                                        Vector3 vertexPos = c3Phy.OutputVertices[v].Position;
+
+                                        // Append a direct line segment from bone center to vertex position
+                                        _boneVertices.Add(new VertexPositionColor(bonePos, webColor));
+                                        _boneVertices.Add(new VertexPositionColor(vertexPos, webColor));
+                                    }
+                                }
+                                break; // Rigid skinning breaks out immediately on first active influence!
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -566,7 +608,9 @@ public class C3StudioGame : WpfGame
         _boneEffect.World = Matrix.Identity;
 
         GraphicsDevice.BlendState = BlendState.AlphaBlend;
-        // DepthStencilState.None allows bone viewing entirely through the character mesh
+
+        // DepthStencilState.None allows you to look through the solid geometry 
+        // to inspect the layout of bones and vertex bindings inside the mesh.
         GraphicsDevice.DepthStencilState = DepthStencilState.None;
         GraphicsDevice.RasterizerState = RasterizerState.CullNone;
 

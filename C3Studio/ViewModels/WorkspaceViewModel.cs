@@ -144,7 +144,19 @@ public class WorkspaceViewModel : ViewModelBase
             }
         }
     }
-    
+    private bool _showSpiderweb;
+    public bool ShowSpiderweb
+    {
+        get => _showSpiderweb;
+        set
+        {
+            if (Set(ref _showSpiderweb, value) && _game != null)
+            {
+                _game.ShowSpiderweb = value;
+            }
+        }
+    }
+
 
     private bool _showBoundingBox;
     public bool ShowBoundingBox
@@ -403,6 +415,7 @@ public class WorkspaceViewModel : ViewModelBase
         if (_game != null)
         {
             _game.ShowBones = ShowBones;
+            _game.ShowSpiderweb = ShowSpiderweb;
             _game.ShowBoundingBox = ShowBoundingBox;
             _game.ShowAxisGizmo = ShowAxisGizmo;
             _game.IsOrthographic = IsOrthographic;
